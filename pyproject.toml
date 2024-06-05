@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "Fisher-Leetcode"
+version = "0.1.0"
+description = ""
+authors = ["ChaserZ98 <feiyuzheng98@gmail.com>"]
+readme = "README.md"
+packages = [{ include = "Fisher_Leetcode", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fisherbot = { git = "https://github.com/Fisher-Discord-Org/Fisher.git", branch = "Fisher" }
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
