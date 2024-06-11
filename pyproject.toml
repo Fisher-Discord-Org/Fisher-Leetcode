@@ -9,6 +9,7 @@ packages = [{ include = "Fisher_Leetcode", from = "src" }]
 [tool.poetry.dependencies]
 python = "^3.12"
 fisherbot = { git = "https://github.com/Fisher-Discord-Org/Fisher.git", branch = "Fisher" }
+apscheduler = "^3.10.4"
 
 [build-system]
 requires = ["poetry-core"]
