@@ -386,12 +386,14 @@ class LeetcodeCog(
                 value=channel.mention
                 if channel
                 else f"Channel not found (previous channel id: {config.notification_channel_id})",
+                inline=False,
             )
             embed.add_field(
                 name="Daily challenge status",
                 value="On" if config.daily_challenge_on else "Off",
+                inline=False,
             )
-            embed.add_field(name="Timezone", value=config.guild_timezone)
+            embed.add_field(name="Timezone", value=config.guild_timezone, inline=False)
             embed.add_field(
                 name="Daily challenge start time",
                 value=datetime.now(timezone.utc)
@@ -401,16 +403,19 @@ class LeetcodeCog(
                     second=self.START_TIME.second,
                 )
                 .astimezone(pytz_timezone(config.guild_timezone))
-                .strftime("%H:%M:%S %Z"),
+                .time()
+                .strftime("%H:%M:%S"),
+                inline=False,
             )
             remind_time = self._timestr_to_time(
                 config.remind_time, timezone_str=config.guild_timezone
             )
             embed.add_field(
                 name="Daily challenge remind time",
-                value=remind_time.strftime("%H:%M:%S %Z")
+                value=remind_time.strftime("%H:%M:%S")
                 if remind_time
                 else f"Invalid time (current stored time: {config.remind_time})",
+                inline=False,
             )
             embed.add_field(
                 name="Daily challenge end time",
@@ -421,7 +426,9 @@ class LeetcodeCog(
                     second=self.END_TIME.second,
                 )
                 .astimezone(pytz_timezone(config.guild_timezone))
-                .strftime("%H:%M:%S %Z"),
+                .time()
+                .strftime("%H:%M:%S"),
+                inline=False,
             )
             return embed
 
