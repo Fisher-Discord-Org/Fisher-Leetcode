@@ -49,7 +49,7 @@ class LeetcodeCog(
     async def cog_load(self) -> None:
         await super().cog_load()
         await self.init_models(Base)
-        await self.scheduler.add_jobstore(
+        self.scheduler.add_jobstore(
             SQLAlchemyJobStore(
                 url=self.bot.db_config.get_sync_url(
                     self.qualified_name
