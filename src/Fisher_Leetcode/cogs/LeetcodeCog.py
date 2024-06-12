@@ -132,7 +132,7 @@ class LeetcodeCog(
         ][:25]
 
     @leetcode_group.command(
-        "init",
+        name="init",
         description="Initialize the Leetcode plugin in the current guild",
         extras={
             "locale": {
