@@ -73,7 +73,7 @@ class LeetcodeCog(
         self.scheduler.start()
         if self.scheduler.get_job("daily-challenge-start") is None:
             self.scheduler.add_job(
-                self._daily_challenge_start,
+                _daily_challenge_start,
                 CronTrigger(
                     hour=self.START_TIME.hour,
                     minute=self.START_TIME.minute,
@@ -85,7 +85,7 @@ class LeetcodeCog(
 
         if self.scheduler.get_job("daily-challenge-end") is None:
             self.scheduler.add_job(
-                self._daily_challenge_end,
+                _daily_challenge_end,
                 CronTrigger(
                     hour=self.END_TIME.hour,
                     minute=self.END_TIME.minute,
@@ -331,7 +331,7 @@ class LeetcodeCog(
         if self.scheduler.get_job(remind_job_id):
             self._remove_remind_job(guild_id)
         self.scheduler.add_job(
-            self._daily_challenge_remind,
+            _daily_challenge_remind,
             CronTrigger(
                 hour=remind_time.hour,
                 minute=remind_time.minute,
@@ -346,87 +346,6 @@ class LeetcodeCog(
         remind_job_id = self._get_remind_job_id(guild_id)
         if self.scheduler.get_job(remind_job_id):
             self.scheduler.remove_job(remind_job_id)
-
-    async def _daily_challenge_remind(self, guild_id: int):
-        async with self.db_session() as session:
-            guild = self.bot.get_guild(guild_id)
-
-            leetcode_config = await crud.get_leetcode_config(session, guild_id=guild_id)
-            if not leetcode_config:
-                self._remove_remind_job(guild_id)
-                raise CommandArgumentError(
-                    status_code=404,
-                    detail=f"Leetcode module is either not initialized or not found for guild ({guild_id}) but remind job is still running.",
-                )
-
-            if not guild:
-                self._remove_remind_job(guild_id)
-                await session.delete(leetcode_config)
-                await session.commit()
-                raise CommandArgumentError(
-                    status_code=404,
-                    detail=f"Guild ({guild_id}) has removed the bot but remind job is still running.",
-                )
-
-            role = guild.get_role(leetcode_config.role_id)
-
-            if not role:
-                self._remove_remind_job(guild_id)
-                leetcode_config.daily_challenge_on = False
-                await session.commit()
-                raise CommandArgumentError(
-                    status_code=404,
-                    detail=f"Remind job [remind-{guild_id}] failed due to missing role ({leetcode_config.role_id}) in guild ({guild_id}).",
-                )
-
-            notification_channel = self.bot.get_channel(
-                leetcode_config.notification_channel_id
-            )
-
-            if (
-                not notification_channel
-                or notification_channel.permissions_for(self.bot.user).send_messages
-            ):
-                self._remove_remind_job(guild_id)
-                leetcode_config.daily_challenge_on = False
-                await session.commit()
-                raise CommandArgumentError(
-                    status_code=400,
-                    detail=f"Remind job [remind-{guild_id}] failed due to missing or no permission to send messages in notification channel ({leetcode_config.notification_channel_id}) in guild ({guild_id}).",
-                )
-
-            completed_user_ids = await crud.get_completed_user_ids(session, guild_id)
-
-            remind_content = "Today's leetcode daily coding challenge will be end soon."
-
-            unfinished_content = ""
-
-            for member in role.members:
-                if member.id not in completed_user_ids:
-                    if unfinished_content:
-                        unfinished_content += f"{member.mention}"
-                    else:
-                        unfinished_content = f" You still have some time to complete it.\n{member.mention}"
-
-            await notification_channel.send(remind_content + unfinished_content)
-
-    async def _daily_challenge_start(self):
-        async with self.db_session() as session:
-            channel_ids = await crud.get_active_daily_challenge_channel_ids(session)
-            for channel_id in channel_ids:
-                channel = self.bot.get_channel(channel_id)
-                if not channel:
-                    continue
-                await channel.send("Daily challenge started.")
-
-    async def _daily_challenge_end(self):
-        async with self.db_session() as session:
-            channel_ids = await crud.get_active_daily_challenge_channel_ids(session)
-            for channel_id in channel_ids:
-                channel = self.bot.get_channel(channel_id)
-                if not channel:
-                    continue
-                await channel.send("Daily challenge ended.")
 
     async def _get_info_embed(self, guild_id: int) -> Embed | None:
         """Get the info embed based on thhe guild with the given guild_id.
@@ -534,3 +453,100 @@ class LeetcodeCog(
             )
         except IndexError or ValueError:
             return None
+
+
+async def _daily_challenge_start():
+    cog = LeetcodeCog.get_instance()
+    if not cog:
+        raise Exception("LeetcodeCog instance not found.")
+
+    async with cog.db_session() as session:
+        channel_ids = await crud.get_active_daily_challenge_channel_ids(session)
+        for channel_id in channel_ids:
+            channel = cog.bot.get_channel(channel_id)
+            if not channel:
+                continue
+            await channel.send("Daily challenge started.")
+
+
+async def _daily_challenge_remind(guild_id: int):
+    cog = LeetcodeCog.get_instance()
+    if not cog:
+        raise Exception("LeetcodeCog instance not found.")
+
+    async with cog.db_session() as session:
+        guild = cog.bot.get_guild(guild_id)
+
+        leetcode_config = await crud.get_leetcode_config(session, guild_id=guild_id)
+        if not leetcode_config:
+            cog._remove_remind_job(guild_id)
+            raise CommandArgumentError(
+                status_code=404,
+                detail=f"Leetcode module is either not initialized or not found for guild ({guild_id}) but remind job is still running.",
+            )
+
+        if not guild:
+            cog._remove_remind_job(guild_id)
+            await session.delete(leetcode_config)
+            await session.commit()
+            raise CommandArgumentError(
+                status_code=404,
+                detail=f"Guild ({guild_id}) has removed the bot but remind job is still running.",
+            )
+
+        role = guild.get_role(leetcode_config.role_id)
+
+        if not role:
+            cog._remove_remind_job(guild_id)
+            leetcode_config.daily_challenge_on = False
+            await session.commit()
+            raise CommandArgumentError(
+                status_code=404,
+                detail=f"Remind job [remind-{guild_id}] failed due to missing role ({leetcode_config.role_id}) in guild ({guild_id}).",
+            )
+
+        notification_channel = cog.bot.get_channel(
+            leetcode_config.notification_channel_id
+        )
+
+        if (
+            not notification_channel
+            or notification_channel.permissions_for(cog.bot.user).send_messages
+        ):
+            cog._remove_remind_job(guild_id)
+            leetcode_config.daily_challenge_on = False
+            await session.commit()
+            raise CommandArgumentError(
+                status_code=400,
+                detail=f"Remind job [remind-{guild_id}] failed due to missing or no permission to send messages in notification channel ({leetcode_config.notification_channel_id}) in guild ({guild_id}).",
+            )
+
+        completed_user_ids = await crud.get_completed_user_ids(session, guild_id)
+
+        remind_content = "Today's leetcode daily coding challenge will be end soon."
+
+        unfinished_content = ""
+
+        for member in role.members:
+            if member.id not in completed_user_ids:
+                if unfinished_content:
+                    unfinished_content += f"{member.mention}"
+                else:
+                    unfinished_content = (
+                        f" You still have some time to complete it.\n{member.mention}"
+                    )
+
+        await notification_channel.send(remind_content + unfinished_content)
+
+
+async def _daily_challenge_end():
+    cog = LeetcodeCog.get_instance()
+    if not cog:
+        raise Exception("LeetcodeCog instance not found.")
+    async with cog.db_session() as session:
+        channel_ids = await crud.get_active_daily_challenge_channel_ids(session)
+        for channel_id in channel_ids:
+            channel = cog.bot.get_channel(channel_id)
+            if not channel:
+                continue
+            await channel.send("Daily challenge ended.")
