@@ -274,7 +274,7 @@ class LeetcodeCog(
                     status_code=404,
                     detail="Leetcode plugin is not initialized in this guild.",
                 )
-            await self._remove_remind_job(interaction.guild_id)
+            self._remove_remind_job(interaction.guild_id)
             await self._delete_role(interaction.guild, role_id=leetcode_config.role_id)
             await session.delete(leetcode_config)
             await session.commit()
