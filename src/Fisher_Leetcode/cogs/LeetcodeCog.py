@@ -49,13 +49,25 @@ class LeetcodeCog(
     async def cog_load(self) -> None:
         await super().cog_load()
         await self.init_models(Base)
-        self.scheduler.add_jobstore(
+        await self.scheduler.add_jobstore(
             SQLAlchemyJobStore(
-                engine=self.bot.get_db(self).db_engine,
+                url=self.bot.db_config.get_sync_url(self.qualified_name),
                 tablename=f"{self.qualified_name}_apscheduler_jobs",
-            ),
-            alias="default",
+            )
         )
+
+        # Async engine is not supported by apscheduler 3.x yet
+        # but according to https://github.com/agronholm/apscheduler/issues/729
+        # it will be supported in apscheduler 4.x
+        # Thus, the following code is left here for future use.
+        # self.scheduler.add_jobstore(
+        #     SQLAlchemyJobStore(
+        #         engine=self.bot.get_db(self).db_engine,
+        #         tablename=f"{self.qualified_name}_apscheduler_jobs",
+        #     ),
+        #     alias="default",
+        # )
+
         self.scheduler.start()
         if self.scheduler.get_job("daily-challenge-start") is None:
             self.scheduler.add_job(
