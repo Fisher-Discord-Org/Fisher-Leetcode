@@ -51,7 +51,9 @@ class LeetcodeCog(
         await self.init_models(Base)
         await self.scheduler.add_jobstore(
             SQLAlchemyJobStore(
-                url=self.bot.db_config.get_sync_url(self.qualified_name),
+                url=self.bot.db_config.get_sync_url(
+                    self.qualified_name
+                ).get_secret_value(),
                 tablename=f"{self.qualified_name}_apscheduler_jobs",
             )
         )
