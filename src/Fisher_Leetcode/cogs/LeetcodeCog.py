@@ -338,7 +338,7 @@ class LeetcodeCog(
                 second=remind_time.second,
                 timezone=timezone.utc,
             ),
-            args=(guild_id),
+            args=(guild_id,),
             id=remind_job_id,
         )
 
