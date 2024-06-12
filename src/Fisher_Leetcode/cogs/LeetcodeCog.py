@@ -150,7 +150,7 @@ class LeetcodeCog(
         },
     )
     @app_commands.autocomplete(guild_timezone=_timezone_autocomplete)
-    @is_guild_admin
+    @is_guild_admin()
     async def leetcode_init(
         self,
         interaction: Interaction,
@@ -247,7 +247,7 @@ class LeetcodeCog(
             }
         },
     )
-    @is_guild_admin
+    @is_guild_admin()
     async def leetcode_clean(self, interaction: Interaction):
         await interaction.response.defer(ephemeral=True)
 
