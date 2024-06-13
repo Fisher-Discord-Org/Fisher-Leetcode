@@ -161,8 +161,39 @@ class LeetcodeCog(
                     Locale.american_english: "Initialize the Leetcode plugin in the current guild",
                     Locale.chinese: "初始化当前服务器的Leetcode插件",
                 },
+                "parameters": {
+                    "role_name": {
+                        "name": {
+                            Locale.british_english: "role_name",
+                            Locale.american_english: "role_name",
+                            Locale.chinese: "身份组名称",
+                        },
+                        "description": {
+                            Locale.british_english: "The name of the role to create. Default to `Leetcode`.",
+                            Locale.american_english: "The name of the role to create. Default to `Leetcode`.",
+                            Locale.chinese: "要创建的身份组的名称。默认为`Leetcode`。",
+                        },
+                    },
+                    "cookie": {
+                        "name": {
+                            Locale.british_english: "cookie",
+                            Locale.american_english: "cookie",
+                            Locale.chinese: "Cookie",
+                        },
+                        "description": {
+                            Locale.british_english: "The cookie for leetcode.com.",
+                            Locale.american_english: "The cookie for leetcode.com.",
+                            Locale.chinese: "力扣官网的Cookie.",
+                        },
+                    },
+                },
             }
         },
+    )
+    @app_commands.describe(
+        role_name="The name of the role to create. Default to `Leetcode`.",
+        cookie="The cookie for leetcode.com.",
+        guild_timezone="The timezone to set for the current guild. Default to UTC.",
     )
     @app_commands.autocomplete(guild_timezone=_timezone_autocomplete)
     @is_guild_admin()
@@ -403,6 +434,20 @@ class LeetcodeCog(
                     Locale.american_english: "Set the notification channel for the leetcode daily challenge in the current guild.",
                     Locale.chinese: "设置当前服务器的力扣每日挑战通知频道。",
                 },
+                "parameters": {
+                    "channel_id": {
+                        "name": {
+                            Locale.british_english: "channel_id",
+                            Locale.american_english: "channel_id",
+                            Locale.chinese: "频道ID",
+                        },
+                        "description": {
+                            Locale.british_english: "The id of the channel to set as the notification channel. Default to the current channel.",
+                            Locale.american_english: "The id of the channel to set as the notification channel. Default to the current channel.",
+                            Locale.chinese: "要设置为通知频道的频道ID。默认为当前频道。",
+                        },
+                    }
+                },
             }
         },
     )
@@ -460,6 +505,20 @@ class LeetcodeCog(
                     Locale.british_english: "Set the timezone for the current guild. Default to UTC.",
                     Locale.american_english: "Set the timezone for the current guild. Default to UTC.",
                     Locale.chinese: "设置当前服务器的时区。默认为UTC。",
+                },
+                "parameters": {
+                    "guild_timezone": {
+                        "name": {
+                            Locale.british_english: "guild_timezone",
+                            Locale.american_english: "guild_timezone",
+                            Locale.chinese: "服务器时区",
+                        },
+                        "description": {
+                            Locale.british_english: "The timezone to set for the current guild. Default to UTC.",
+                            Locale.american_english: "The timezone to set for the current guild. Default to UTC.",
+                            Locale.chinese: "当前服务器的时区。默认为UTC。",
+                        },
+                    }
                 },
             }
         },
