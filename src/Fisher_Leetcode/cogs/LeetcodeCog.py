@@ -14,6 +14,7 @@ from discord import (
     HTTPException,
     Interaction,
     Locale,
+    TextChannel,
     app_commands,
 )
 from discord.app_commands import Group
@@ -379,6 +380,115 @@ class LeetcodeCog(
             self._remove_remind_job(interaction.guild_id)
 
         await interaction.followup.send("Daily challenge stopped.", ephemeral=True)
+
+    async def _channel_autocomplete(self, interaction: Interaction, current: str):
+        return [
+            app_commands.Choice(name=channel.name, value=channel)
+            for channel in interaction.guild.channels
+            if current.lower() in channel.name.lower()
+            and isinstance(channel, TextChannel)
+        ][:25]
+
+    @leetcode_group.command(
+        name="channel",
+        description="Set the notification channel for the leetcode daily challenge in the current guild. Default to the channel of executing this command.",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "channel",
+                    Locale.american_english: "channel",
+                    Locale.chinese: "频道",
+                },
+                "description": {
+                    Locale.british_english: "Set the notification channel for the leetcode daily challenge in the current guild. Default to the channel of executing this command.",
+                    Locale.american_english: "Set the notification channel for the leetcode daily challenge in the current guild. Default to the channel of executing this command.",
+                    Locale.chinese: "设置当前服务器的力扣每日挑战通知频道。默认为执行此命令的频道。",
+                },
+            }
+        },
+    )
+    @app_commands.describe(channel="The channel to set as the notification channel.")
+    @app_commands.autocomplete(channel=_channel_autocomplete)
+    @is_guild_admin()
+    async def leetcode_channel(
+        self, interaction: Interaction, channel: TextChannel = None
+    ):
+        await interaction.response.defer(ephemeral=True)
+        channel = channel or interaction.channel
+        if not isinstance(channel, TextChannel):
+            raise CommandArgumentError(
+                status_code=400, detail="The channel must be a text channel."
+            )
+        if not channel.permissions_for(self.bot).send_messages:
+            raise CommandArgumentError(
+                status_code=403,
+                detail="The bot does not have permission to send messages in the channel.",
+            )
+
+        async with self.db_session() as session:
+            leetcode_config = await crud.get_leetcode_config(
+                session, guild_id=interaction.guild_id
+            )
+            if not leetcode_config:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail="Leetcode plugin is not initialized in this guild.",
+                )
+            leetcode_config.notification_channel_id = channel.id
+            await session.commit()
+
+        await interaction.followup.send(
+            f"Notification channel set to {channel.mention}.", ephemeral=True
+        )
+
+    @leetcode_group.command(
+        name="timezone",
+        description="Set the timezone for the current guild. Default to UTC.",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "timezone",
+                    Locale.american_english: "timezone",
+                    Locale.chinese: "时区",
+                },
+                "description": {
+                    Locale.british_english: "Set the timezone for the current guild. Default to UTC.",
+                    Locale.american_english: "Set the timezone for the current guild. Default to UTC.",
+                    Locale.chinese: "设置当前服务器的时区。默认为UTC。",
+                },
+            }
+        },
+    )
+    @app_commands.describe(
+        guild_timezone="The timezone to set for the current guild. Default to UTC."
+    )
+    @app_commands.autocomplete(guild_timezone=_timezone_autocomplete)
+    @is_guild_admin()
+    async def leetcode_timezone(
+        self, interaction: Interaction, guild_timezone: str = "UTC"
+    ):
+        await interaction.response.defer(ephemeral=True)
+        if guild_timezone not in common_timezones_set:
+            raise CommandArgumentError(
+                status_code=400,
+                detail=f"Unknown timezone `{guild_timezone}`. Please choose a supported timezone.",
+            )
+
+        async with self.db_session() as session:
+            leetcode_config = await crud.get_leetcode_config(
+                session, guild_id=interaction.guild_id
+            )
+            if not leetcode_config:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail="Leetcode plugin is not initialized in this guild.",
+                )
+            leetcode_config.guild_timezone = guild_timezone
+            await session.commit()
+
+        await interaction.followup.send(
+            f"Timezone set to `{guild_timezone}`.", ephemeral=True
+        )
 
     async def _create_role(
         self,
