@@ -178,7 +178,7 @@ class LeetcodeCog(
                         "name": {
                             Locale.british_english: "cookie",
                             Locale.american_english: "cookie",
-                            Locale.chinese: "Cookie",
+                            Locale.chinese: "cookie",
                         },
                         "description": {
                             Locale.british_english: "The cookie for leetcode.com.",
@@ -439,7 +439,7 @@ class LeetcodeCog(
                         "name": {
                             Locale.british_english: "channel_id",
                             Locale.american_english: "channel_id",
-                            Locale.chinese: "频道ID",
+                            Locale.chinese: "频道id",
                         },
                         "description": {
                             Locale.british_english: "The id of the channel to set as the notification channel. Default to the current channel.",
