@@ -383,7 +383,7 @@ class LeetcodeCog(
 
     async def _channel_autocomplete(self, interaction: Interaction, current: str):
         return [
-            app_commands.Choice(name=channel.name, value=channel)
+            app_commands.Choice(name=channel.name, value=channel.id)
             for channel in interaction.guild.channels
             if current.lower() in channel.name.lower()
             and isinstance(channel, TextChannel)
@@ -407,14 +407,14 @@ class LeetcodeCog(
             }
         },
     )
-    @app_commands.describe(channel="The channel to set as the notification channel.")
-    @app_commands.autocomplete(channel=_channel_autocomplete)
+    @app_commands.describe(
+        channel_id="The id of the channel to set as the notification channel."
+    )
+    @app_commands.autocomplete(channel_id=_channel_autocomplete)
     @is_guild_admin()
-    async def leetcode_channel(
-        self, interaction: Interaction, channel: TextChannel = None
-    ):
+    async def leetcode_channel(self, interaction: Interaction, channel_id: int = None):
         await interaction.response.defer(ephemeral=True)
-        channel = channel or interaction.channel
+        channel = interaction.guild.get_channel(channel_id or interaction.channel_id)
         if not isinstance(channel, TextChannel):
             raise CommandArgumentError(
                 status_code=400, detail="The channel must be a text channel."
