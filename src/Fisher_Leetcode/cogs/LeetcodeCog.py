@@ -283,6 +283,103 @@ class LeetcodeCog(
 
         await interaction.followup.send("Leetcode plugin data cleaned.", ephemeral=True)
 
+    @leetcode_group.command(
+        name="start",
+        description="Start the leetcode daily challenge in the current guild.",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "start",
+                    Locale.american_english: "start",
+                    Locale.chinese: "开始",
+                },
+                "description": {
+                    Locale.british_english: "Start the leetcode daily challenge in the current guild.",
+                    Locale.american_english: "Start the leetcode daily challenge in the current guild.",
+                    Locale.chinese: "开始当前服务器的力扣每日挑战。",
+                },
+            }
+        },
+    )
+    @is_guild_admin()
+    async def leetcode_start(self, interaction: Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        async with self.db_session() as session:
+            leetcode_config = await crud.get_leetcode_config(
+                session, guild_id=interaction.guild_id
+            )
+
+            if not leetcode_config:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail="Leetcode plugin is not initialized in this guild.",
+                )
+
+            if leetcode_config.daily_challenge_on:
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail="Daily challenge is already started.",
+                )
+
+            leetcode_config.daily_challenge_on = True
+            await session.commit()
+
+            remind_time = self._timestr_to_time(leetcode_config.remind_time)
+
+            await self._add_remind_job(
+                guild_id=interaction.guild_id,
+                remind_time=remind_time or time(hour=23, minute=0, second=0),
+            )
+
+        await interaction.followup.send("Daily challenge started.", ephemeral=True)
+
+    @leetcode_group.command(
+        name="stop",
+        description="Stop the leetcode daily challenge in the current guild.",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "stop",
+                    Locale.american_english: "stop",
+                    Locale.chinese: "停止",
+                },
+                "description": {
+                    Locale.british_english: "Stop the leetcode daily challenge in the current guild.",
+                    Locale.american_english: "Stop the leetcode daily challenge in the current guild.",
+                    Locale.chinese: "停止当前服务器的力扣每日挑战。",
+                },
+            }
+        },
+    )
+    @is_guild_admin()
+    async def leetcode_stop(self, interaction: Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        async with self.db_session() as session:
+            leetcode_config = await crud.get_leetcode_config(
+                session, guild_id=interaction.guild_id
+            )
+
+            if not leetcode_config:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail="Leetcode plugin is not initialized in this guild.",
+                )
+
+            if not leetcode_config.daily_challenge_on:
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail="Daily challenge is already stopped.",
+                )
+
+            leetcode_config.daily_challenge_on = False
+            await session.commit()
+
+            await self._remove_remind_job(interaction.guild_id)
+
+        await interaction.followup.send("Daily challenge stopped.", ephemeral=True)
+
     async def _create_role(
         self,
         guild: Guild,
