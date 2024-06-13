@@ -384,9 +384,8 @@ class LeetcodeCog(
     async def _channel_autocomplete(self, interaction: Interaction, current: str):
         return [
             app_commands.Choice(name=channel.name, value=channel.id)
-            for channel in interaction.guild.channels
+            for channel in interaction.guild.text_channels
             if current.lower() in channel.name.lower()
-            and isinstance(channel, TextChannel)
         ][:25]
 
     @leetcode_group.command(
