@@ -39,41 +39,39 @@ class LeetcodeCog(
         super().__init__(bot, requires_db=requires_db)
 
         self._http_connector = TCPConnector(limit=50)
-        self._job_defaults = {
-            "jobstore": "default",
-            "coalesce": True,
-            "misfire_grace_time": 60,
-            "replace_existing": True,
-        }
 
-        self.scheduler = AsyncIOScheduler(job_defaults=self._job_defaults)
+        self.scheduler = AsyncIOScheduler()
         self.http_sessions: dict[int, ClientSession] = {}
 
     async def cog_load(self) -> None:
         await super().cog_load()
         await self.init_models(Base)
-        self.scheduler.add_jobstore(
-            SQLAlchemyJobStore(
+        job_defaults = {
+            "jobstore": "default",
+            "coalesce": True,
+            "misfire_grace_time": 60,
+            "replace_existing": True,
+        }
+        # Async engine is not supported by apscheduler 3.x yet
+        # but according to https://github.com/agronholm/apscheduler/issues/729
+        # it will be supported in apscheduler 4.x
+        # Thus, the following code is left here for future use.
+        # SQLAlchemyJobStore(
+        #     engine=self.bot.get_db(self).db_engine,
+        #     tablename=f"{self.qualified_name}_apscheduler_jobs",
+        # ),
+        jobstores = {
+            "default": SQLAlchemyJobStore(
                 url=self.bot.db_config.get_sync_url(
                     self.qualified_name
                 ).get_secret_value(),
                 tablename=f"{self.qualified_name}_apscheduler_jobs",
             )
-        )
+        }
 
-        # Async engine is not supported by apscheduler 3.x yet
-        # but according to https://github.com/agronholm/apscheduler/issues/729
-        # it will be supported in apscheduler 4.x
-        # Thus, the following code is left here for future use.
-        # self.scheduler.add_jobstore(
-        #     SQLAlchemyJobStore(
-        #         engine=self.bot.get_db(self).db_engine,
-        #         tablename=f"{self.qualified_name}_apscheduler_jobs",
-        #     ),
-        #     alias="default",
-        # )
-
+        self.scheduler.configure(jobstores=jobstores, job_defaults=job_defaults)
         self.scheduler.start()
+
         if self.scheduler.get_job("daily-challenge-start") is None:
             self.scheduler.add_job(
                 _daily_challenge_start,
@@ -383,7 +381,9 @@ class LeetcodeCog(
 
     async def _channel_autocomplete(self, interaction: Interaction, current: str):
         return [
-            app_commands.Choice(name=channel.name, value=channel.id)
+            app_commands.Choice(
+                name=f"{channel.name} ({channel.category})", value=str(channel.id)
+            )
             for channel in interaction.guild.text_channels
             if current.lower() in channel.name.lower()
         ][:25]
@@ -411,9 +411,15 @@ class LeetcodeCog(
     )
     @app_commands.autocomplete(channel_id=_channel_autocomplete)
     @is_guild_admin()
-    async def leetcode_channel(self, interaction: Interaction, channel_id: int = None):
+    async def leetcode_channel(self, interaction: Interaction, channel_id: str = None):
         await interaction.response.defer(ephemeral=True)
-        channel = interaction.guild.get_channel(channel_id or interaction.channel_id)
+        if not channel_id.isdigit():
+            raise CommandArgumentError(
+                status_code=400, detail="The channel id must be an integer."
+            )
+        channel = interaction.guild.get_channel(
+            int(channel_id) or interaction.channel_id
+        )
         if not isinstance(channel, TextChannel):
             raise CommandArgumentError(
                 status_code=400, detail="The channel must be a text channel."
