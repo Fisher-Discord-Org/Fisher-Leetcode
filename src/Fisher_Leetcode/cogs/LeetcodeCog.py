@@ -497,9 +497,8 @@ class LeetcodeCog(
                 expires = leetcode_session.get("expires")
                 expires_date = datetime.strptime(expires, "%a, %d %b %Y %H:%M:%S %Z")
             else:
-                payload = json_loads(
-                    urlsafe_b64decode(leetcode_session.value).decode("utf-8")
-                )
+                payload = leetcode_session.value.split(".")[1]
+                payload = json_loads(urlsafe_b64decode(payload + "==").decode("utf-8"))
                 expires_date = datetime.fromtimestamp(
                     payload["refreshed_at"] + payload["_session_expiry"],
                     tz=timezone.utc,
@@ -507,7 +506,9 @@ class LeetcodeCog(
 
             return (leetcode_session.value if new_cookie else None, expires_date)
         except Exception as e:
-            logger.debug(f"Enable to parse session cookie `LEETCODE_SESSION`: {e}")
+            logger.debug(
+                f"Enable to parse session cookie `LEETCODE_SESSION`: {e}", exc_info=True
+            )
             return None
 
     def _timestr_to_time(self, timestr: str, timezone_str: str = "UTC") -> time | None:
