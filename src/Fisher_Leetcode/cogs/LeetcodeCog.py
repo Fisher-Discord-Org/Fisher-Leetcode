@@ -210,7 +210,7 @@ class LeetcodeCog(
             session.add(leetcode_config)
             await session.commit()
 
-            await self._add_remind_job(
+            self._add_remind_job(
                 guild_id=guild_id, remind_time=time(hour=23, minute=0, second=0)
             )
 
@@ -327,7 +327,7 @@ class LeetcodeCog(
 
             remind_time = self._timestr_to_time(leetcode_config.remind_time)
 
-            await self._add_remind_job(
+            self._add_remind_job(
                 guild_id=interaction.guild_id,
                 remind_time=remind_time or time(hour=23, minute=0, second=0),
             )
@@ -376,7 +376,7 @@ class LeetcodeCog(
             leetcode_config.daily_challenge_on = False
             await session.commit()
 
-            await self._remove_remind_job(interaction.guild_id)
+            self._remove_remind_job(interaction.guild_id)
 
         await interaction.followup.send("Daily challenge stopped.", ephemeral=True)
 
@@ -425,7 +425,7 @@ class LeetcodeCog(
     def _get_remind_job_id(self, guild_id: int) -> str:
         return f"remind-{guild_id}"
 
-    async def _add_remind_job(self, guild_id: int, remind_time: time):
+    def _add_remind_job(self, guild_id: int, remind_time: time):
         remind_job_id = self._get_remind_job_id(guild_id)
         if self.scheduler.get_job(remind_job_id):
             self._remove_remind_job(guild_id)
