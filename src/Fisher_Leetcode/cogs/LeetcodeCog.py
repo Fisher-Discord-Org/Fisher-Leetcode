@@ -391,7 +391,7 @@ class LeetcodeCog(
 
     @leetcode_group.command(
         name="channel",
-        description="Set the notification channel for the leetcode daily challenge in the current guild. Default to the channel of executing this command.",
+        description="Set the notification channel for the leetcode daily challenge in the current guild.",
         extras={
             "locale": {
                 "name": {
@@ -400,15 +400,15 @@ class LeetcodeCog(
                     Locale.chinese: "频道",
                 },
                 "description": {
-                    Locale.british_english: "Set the notification channel for the leetcode daily challenge in the current guild. Default to the channel of executing this command.",
-                    Locale.american_english: "Set the notification channel for the leetcode daily challenge in the current guild. Default to the channel of executing this command.",
-                    Locale.chinese: "设置当前服务器的力扣每日挑战通知频道。默认为执行此命令的频道。",
+                    Locale.british_english: "Set the notification channel for the leetcode daily challenge in the current guild.",
+                    Locale.american_english: "Set the notification channel for the leetcode daily challenge in the current guild.",
+                    Locale.chinese: "设置当前服务器的力扣每日挑战通知频道。",
                 },
             }
         },
     )
     @app_commands.describe(
-        channel_id="The id of the channel to set as the notification channel."
+        channel_id="The id of the channel to set as the notification channel. Default to the current channel."
     )
     @app_commands.autocomplete(channel_id=_channel_autocomplete)
     @is_guild_admin()
