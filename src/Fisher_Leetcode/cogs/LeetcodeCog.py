@@ -444,20 +444,6 @@ class LeetcodeCog(
             )
             return embed
 
-    async def _validate_cookie(self, guild_id: int, cookie: str) -> bool:
-        session = await self._get_http_session(guild_id)
-        session.cookie_jar.update_cookies(
-            {"LEETCODE_SESSION": cookie}, URL("https://leetcode.com")
-        )
-        async with session.get(
-            "https://leetcode.com/api/problems/0", allow_redirects=True
-        ) as response:
-            if not response.ok:
-                logger.debug(
-                    f"Failed to receive response from leetcode.com when validating cookie. Status code: {response.status}. Reason: {response.reason}."
-                )
-                return False
-
     async def _get_cookie_status(
         self, guild_id: int
     ) -> tuple[str | None, datetime] | None:
