@@ -419,7 +419,7 @@ class LeetcodeCog(
             raise CommandArgumentError(
                 status_code=400, detail="The channel must be a text channel."
             )
-        if not channel.permissions_for(self.bot).send_messages:
+        if not channel.permissions_for(interaction.guild.me).send_messages:
             raise CommandArgumentError(
                 status_code=403,
                 detail="The bot does not have permission to send messages in the channel.",
@@ -775,7 +775,9 @@ async def _daily_challenge_remind(guild_id: int):
 
         if (
             not notification_channel
-            or notification_channel.permissions_for(cog.bot.user).send_messages
+            or notification_channel.permissions_for(
+                notification_channel.guild.me
+            ).send_messages
         ):
             cog._remove_remind_job(guild_id)
             leetcode_config.daily_challenge_on = False
