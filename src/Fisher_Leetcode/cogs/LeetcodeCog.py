@@ -1,4 +1,6 @@
+from base64 import urlsafe_b64decode
 from datetime import datetime, time, timezone
+from json import loads as json_loads
 
 from aiohttp import ClientSession, TCPConnector
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -15,7 +17,7 @@ from discord import (
     app_commands,
 )
 from discord.app_commands import Group
-from Fisher import Fisher, FisherCog
+from Fisher import Fisher, FisherCog, logger
 from Fisher.core.exceptions import CommandArgumentError
 from Fisher.utils.discord_utils import is_guild_admin
 from pytz import common_timezones, common_timezones_set
@@ -373,13 +375,23 @@ class LeetcodeCog(
                 else f"Role not found (previous role id: {config.role_id})",
             )
             cookie_status = await self._get_cookie_status(guild_id=guild_id)
-            embed.add_field(
-                name="Cookie status",
-                value=f"Valid (Expires: {cookie_status.strftime('%Y-%m-%d %H:%M:%S %Z')})"
-                if cookie_status
-                else "Invalid",
-                inline=False,
-            )
+            if not cookie_status:
+                embed.add_field(
+                    name="Cookie status",
+                    value="Invalid",
+                    inline=False,
+                )
+            else:
+                new_cookie, cookie_expires = cookie_status
+                if new_cookie:
+                    config.cookie = new_cookie
+                    await session.commit()
+                embed.add_field(
+                    name="Cookie status",
+                    value=f"Valid (Expires: {cookie_expires.strftime('%Y-%m-%d %H:%M:%S %Z')})",
+                    inline=False,
+                )
+
             channel = self.bot.get_channel(config.notification_channel_id)
             embed.add_field(
                 name="Notification channel",
@@ -432,20 +444,71 @@ class LeetcodeCog(
             )
             return embed
 
-    async def _get_cookie_status(self, guild_id: int) -> datetime | None:
+    async def _validate_cookie(self, guild_id: int, cookie: str) -> bool:
         session = await self._get_http_session(guild_id)
+        session.cookie_jar.update_cookies(
+            {"LEETCODE_SESSION": cookie}, URL("https://leetcode.com")
+        )
         async with session.get(
             "https://leetcode.com/api/problems/0", allow_redirects=True
         ) as response:
             if not response.ok:
+                logger.debug(
+                    f"Failed to receive response from leetcode.com when validating cookie. Status code: {response.status}. Reason: {response.reason}."
+                )
+                return False
+
+    async def _get_cookie_status(
+        self, guild_id: int
+    ) -> tuple[str | None, datetime] | None:
+        """
+        Check if there is a new cookie. If there is, return the new cookie and its expiration date.
+        Otherwise, return None with the expiration date of the existing cookie.
+        If the existing cookie is invalid, return None.
+
+        Args:
+            guild_id (int): The guild id to get the cookie status.
+
+        Returns:
+            tuple[str | None, datetime] | None:
+                - If there is a new cookie, return a tuple of the new cookie and its expiration date.
+                - If there is no new cookie, return None with the expiration date of the existing cookie.
+                - If the existing cookie is invalid, return None.
+        """
+        session = await self._get_http_session(guild_id)
+        new_cookie = False
+        async with session.get(
+            "https://leetcode.com/api/problems/0", allow_redirects=True
+        ) as response:
+            if not response.ok:
+                logger.debug(
+                    f"Failed to receive response from leetcode.com when checking cookie status. Status code: {response.status}. Reason: {response.reason}."
+                )
                 return None
-            try:
-                leetcode_session = response.cookies.get("LEETCODE_SESSION")
+            if response.cookies.get("LEETCODE_SESSION"):
+                new_cookie = True
+        leetcode_session = session.cookie_jar.filter_cookies(
+            "https://leetcode.com"
+        ).get("LEETCODE_SESSION", None)
+        if not leetcode_session:
+            return None
+        try:
+            if leetcode_session.get("expires"):
                 expires = leetcode_session.get("expires")
                 expires_date = datetime.strptime(expires, "%a, %d %b %Y %H:%M:%S %Z")
-            except AttributeError or ValueError:
-                return None
-            return expires_date
+            else:
+                payload = json_loads(
+                    urlsafe_b64decode(leetcode_session.value).decode("utf-8")
+                )
+                expires_date = datetime.fromtimestamp(
+                    payload["refreshed_at"] + payload["_session_expiry"],
+                    tz=timezone.utc,
+                )
+
+            return (leetcode_session.value if new_cookie else None, expires_date)
+        except Exception as e:
+            logger.debug(f"Enable to parse session cookie `LEETCODE_SESSION`: {e}")
+            return None
 
     def _timestr_to_time(self, timestr: str, timezone_str: str = "UTC") -> time | None:
         try:
