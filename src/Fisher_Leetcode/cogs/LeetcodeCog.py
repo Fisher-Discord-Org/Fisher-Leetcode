@@ -770,9 +770,9 @@ class LeetcodeCog(
     async def leetcode_update(self, interaction: Interaction):
         await interaction.response.defer(ephemeral=True)
 
-        async with self.db_session() as session:
+        async with self.db_session() as db_session:
             leetcode_config = await crud.get_leetcode_config(
-                session, guild_id=interaction.guild_id
+                db_session, guild_id=interaction.guild_id
             )
             if not leetcode_config:
                 raise CommandArgumentError(
@@ -780,8 +780,10 @@ class LeetcodeCog(
                     detail="Leetcode plugin is not initialized in this guild.",
                 )
 
-            session = await self._get_http_session(interaction.guild_id)
-            async with session.get("https://leetcode.com/api/problems/all") as response:
+            http_session = await self._get_http_session(interaction.guild_id)
+            async with http_session.get(
+                "https://leetcode.com/api/problems/all"
+            ) as response:
                 if not response.ok:
                     if response.status == 403:
                         raise CommandArgumentError(
@@ -798,7 +800,7 @@ class LeetcodeCog(
             for question in data["stat_status_pairs"]:
                 question_id = question["stat"]["frontend_question_id"]
                 question = await crud.get_question_by_id(
-                    session, question_id=question_id
+                    db_session, question_id=question_id
                 )
                 if question:
                     question.title = question["stat"]["question__title"]
@@ -813,8 +815,8 @@ class LeetcodeCog(
                         difficulty=question["difficulty"]["level"],
                         paid_only=question["paid_only"],
                     )
-                    session.add(question)
-            await session.commit()
+                    db_session.add(question)
+            await db_session.commit()
 
         await interaction.followup.send(
             f"Successfully updated {len(data['stat_status_pairs'])} leetcode questions.",
