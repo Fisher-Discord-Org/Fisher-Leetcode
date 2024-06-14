@@ -799,23 +799,23 @@ class LeetcodeCog(
 
             for question in data["stat_status_pairs"]:
                 question_id = question["stat"]["frontend_question_id"]
-                question = await crud.get_question_by_id(
+                db_question = await crud.get_question_by_id(
                     db_session, question_id=question_id
                 )
-                if question:
-                    question.title = question["stat"]["question__title"]
-                    question.title_slug = question["stat"]["question__title_slug"]
-                    question.difficulty = question["difficulty"]["level"]
-                    question.paid_only = question["paid_only"]
+                if db_question:
+                    db_question.title = question["stat"]["question__title"]
+                    db_question.title_slug = question["stat"]["question__title_slug"]
+                    db_question.difficulty = question["difficulty"]["level"]
+                    db_question.paid_only = question["paid_only"]
                 else:
-                    question = Question(
+                    db_question = Question(
                         id=question_id,
                         title=question["stat"]["question__title"],
                         title_slug=question["stat"]["question__title_slug"],
                         difficulty=question["difficulty"]["level"],
                         paid_only=question["paid_only"],
                     )
-                    db_session.add(question)
+                    db_session.add(db_question)
             await db_session.commit()
 
         await interaction.followup.send(
