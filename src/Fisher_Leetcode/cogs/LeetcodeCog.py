@@ -1630,6 +1630,7 @@ def _get_submission_graph_query() -> str:
         fields=[
             Field(name="questionFrontendId"),
             Field(name="title"),
+            Field(name="titleSlug"),
             Field(name="difficulty"),
             Field(name="isPaidOnly"),
         ],
