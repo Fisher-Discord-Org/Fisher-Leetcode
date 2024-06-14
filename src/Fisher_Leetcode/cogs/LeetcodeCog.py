@@ -1088,7 +1088,7 @@ class LeetcodeCog(
                     detail=f"Failed to get submission {submission_id}: {response.status} {response.reason}",
                 )
             data = await response.json()
-            data = data["data"]["submissionDetail"]
+            data = data["data"]["submissionDetails"]
 
         if not data:
             raise CommandArgumentError(
