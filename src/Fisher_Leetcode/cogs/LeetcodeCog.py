@@ -1141,9 +1141,7 @@ class LeetcodeCog(
                 if response.ok:
                     data = await response.json()
                     data = data["data"]["submissionComplexity"]
-                    submission_runtime_complexity = data["runtimeComplexity"][
-                        "complexity"
-                    ]
+                    submission_runtime_complexity = data["timeComplexity"]["complexity"]
                     submission_memory_complexity = data["memoryComplexity"][
                         "complexity"
                     ]
@@ -1169,7 +1167,7 @@ class LeetcodeCog(
         )
         embed.add_field(
             name="Memory",
-            value=f"{submission_memory_display}{f' (Beats: {submission_memory_percentile:.2f}% of submissions)' if submission_memory_percentile else ''}{f'\n{submission_runtime_complexity}' if submission_runtime_complexity else ''}",
+            value=f"{submission_memory_display}{f' (Beats: {submission_memory_percentile:.2f}% of submissions)' if submission_memory_percentile else ''}{f'\n{submission_memory_complexity}' if submission_memory_complexity else ''}",
             inline=True,
         )
 
