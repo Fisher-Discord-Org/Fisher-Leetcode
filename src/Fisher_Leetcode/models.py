@@ -46,7 +46,11 @@ class Member(Base):
 class Question(Base):
     __tablename__ = "leetcode_questions"
 
-    question_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    title_slug: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    difficulty: Mapped[int] = mapped_column(Integer, nullable=False)
+    paid_only: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
 class Submission(Base):
@@ -61,7 +65,7 @@ class Submission(Base):
     )
     question_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("leetcode_questions.question_id", ondelete="CASCADE"),
+        ForeignKey("leetcode_questions.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
     )
