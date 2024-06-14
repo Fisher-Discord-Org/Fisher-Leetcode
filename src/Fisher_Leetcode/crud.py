@@ -54,7 +54,7 @@ async def get_completed_user_ids(db: AsyncSession, guild_id: int) -> list[int]:
 
 async def get_question_by_id(db: AsyncSession, question_id: int) -> Question | None:
     res = await db.execute(select(Question).where(Question.id == question_id))
-    res = res.scalar_one_or_none
+    res = res.scalar_one_or_none()
     return res
 
 
