@@ -1201,6 +1201,8 @@ class LeetcodeCog(
 
         embed.set_footer(text=f"{submission_id} | {submission_datetime}")
 
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
     async def _create_role(
         self,
         guild: Guild,
