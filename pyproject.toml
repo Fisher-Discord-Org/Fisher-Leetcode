@@ -10,6 +10,7 @@ packages = [{ include = "Fisher_Leetcode", from = "src" }]
 python = "^3.12"
 fisherbot = { git = "https://github.com/Fisher-Discord-Org/Fisher.git", branch = "Fisher" }
 apscheduler = "^3.10.4"
+graphql-query = "^1.3.2"
 
 [build-system]
 requires = ["poetry-core"]
