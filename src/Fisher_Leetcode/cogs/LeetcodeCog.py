@@ -21,6 +21,7 @@ from discord.app_commands import Group
 from Fisher import Fisher, FisherCog, logger
 from Fisher.core.exceptions import CommandArgumentError
 from Fisher.utils.discord_utils import is_guild_admin
+from graphql_query import Argument, Field, Operation, Query, Variable
 from pytz import common_timezones, common_timezones_set
 from pytz import timezone as pytz_timezone
 from yarl import URL
@@ -554,6 +555,484 @@ class LeetcodeCog(
             f"Timezone set to `{guild_timezone}`.", ephemeral=True
         )
 
+    @leetcode_group.command(
+        name="remind_time",
+        description="Set the remind time (in UTC) for the daily challenge in the current guild",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "remind_time",
+                    Locale.american_english: "remind_time",
+                    Locale.chinese: "提醒时间",
+                },
+                "description": {
+                    Locale.british_english: "Set the remind time (in UTC) for the daily challenge in the current guild",
+                    Locale.american_english: "Set the remind time (in UTC) for the daily challenge in the current guild",
+                    Locale.chinese: "设置当前服务器的每日挑战提醒时间（UTC时间）",
+                },
+                "parameters": {
+                    "hour": {
+                        "name": {
+                            Locale.british_english: "hour",
+                            Locale.american_english: "hour",
+                            Locale.chinese: "小时",
+                        },
+                        "description": {
+                            Locale.british_english: "The hour of the remind time. Default to 23. Range from 0 to 23.",
+                            Locale.american_english: "The hour of the remind time. Default to 23. Range from 0 to 23.",
+                            Locale.chinese: "提醒时间的小时位。默认为23。范围从0到23。",
+                        },
+                    },
+                    "minute": {
+                        "name": {
+                            Locale.british_english: "minute",
+                            Locale.american_english: "minute",
+                            Locale.chinese: "分钟",
+                        },
+                        "description": {
+                            Locale.british_english: "The minute of the remind time. Default to 0. Range from 0 to 59.",
+                            Locale.american_english: "The minute of the remind time. Default to 0. Range from 0 to 59.",
+                            Locale.chinese: "提醒时间的分钟位。默认为0。范围从0到59。",
+                        },
+                    },
+                    "second": {
+                        "name": {
+                            Locale.british_english: "second",
+                            Locale.american_english: "second",
+                            Locale.chinese: "秒",
+                        },
+                        "description": {
+                            Locale.british_english: "The second of the remind time. Default to 0. Range from 0 to 59.",
+                            Locale.american_english: "The second of the remind time. Default to 0. Range from 0 to 59.",
+                            Locale.chinese: "提醒时间的秒位。默认为0。范围从0到59。",
+                        },
+                    },
+                },
+            }
+        },
+    )
+    @app_commands.describe(
+        hour="The hour of the remind time. Default to 23. Range from 0 to 23.",
+        minute="The minute of the remind time. Default to 0. Range from 0 to 59.",
+        second="The second of the remind time. Default to 0. Range from 0 to 59.",
+    )
+    @is_guild_admin()
+    async def leetcode_remind_time(
+        self, interaction: Interaction, hour: int = 23, minute: int = 0, second: int = 0
+    ):
+        await interaction.response.defer(ephemeral=True)
+
+        if not 0 <= hour <= 23:
+            raise CommandArgumentError(
+                status_code=400, detail="The hour must be between 0 and 23."
+            )
+        if not 0 <= minute <= 59 or not 0 <= second <= 59:
+            raise CommandArgumentError(
+                status_code=400,
+                detail="The minute and second must be between 0 and 59.",
+            )
+
+        async with self.db_session() as session:
+            leeetcode_config = await crud.get_leetcode_config(
+                session, guild_id=interaction.guild_id
+            )
+            if not leeetcode_config:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail="Leetcode plugin is not initialized in this guild.",
+                )
+            leeetcode_config.remind_time = f"{hour:02d}:{minute:02d}:{second:02d}"
+            await session.commit()
+            self._remove_remind_job(interaction.guild_id)
+            self._add_remind_job(
+                interaction.guild_id, time(hour=hour, minute=minute, second=second)
+            )
+
+        await interaction.followup.send(
+            f"Remind time set to {hour:02d}:{minute:02d}:{second:02d}.", ephemeral=True
+        )
+
+    @leetcode_group.command()
+    async def leetcode_join(self, interaction: Interaction):
+        async with self.db_session() as session:
+            leetcode_config = await crud.get_leetcode_config(
+                session, guild_id=interaction.guild_id
+            )
+            if not leetcode_config:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail="Leetcode plugin is not initialized in this guild.",
+                )
+
+            member = await crud.get_member(
+                session, guild_id=interaction.guild_id, member_id=interaction.user.id
+            )
+            if member:
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail="You have already joined the daily challenge.",
+                )
+            role = interaction.guild.get_role(leetcode_config.role_id)
+            if not role:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail=f"Inconsistent role configuration. Please contact the administrator to reconfigure the role. Previous role id: {leetcode_config.role_id}",
+                )
+            await interaction.user.add_roles(role, reason="Joined the daily challenge.")
+            member = Member(user_id=interaction.user.id, guild_id=interaction.guild_id)
+            session.add(member)
+            await session.commit()
+
+        await interaction.followup.send(
+            """
+            Successfully joined the leetcode daily challenge.
+            Use `/leetcode info` to check the daily challenge information.
+            Use `/leetcode today` to get today's challenge.
+            Use `/leetcode quit` to quit the daily challenge.
+            """,
+            ephemeral=True,
+        )
+
+    @leetcode_group.command(
+        name="quit",
+        description="Quit the leetcode daily challenge in the current guild.",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "quit",
+                    Locale.american_english: "quit",
+                    Locale.chinese: "退出",
+                },
+                "description": {
+                    Locale.british_english: "Quit the leetcode daily challenge in the current guild.",
+                    Locale.american_english: "Quit the leetcode daily challenge in the current guild.",
+                    Locale.chinese: "退出当前服务器的力扣每日挑战。",
+                },
+            }
+        },
+    )
+    async def leetcode_quit(self, interaction: Interaction):
+        async with self.db_session() as session:
+            leetcode_config = await crud.get_leetcode_config(
+                session, guild_id=interaction.guild_id
+            )
+            if not leetcode_config:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail="Leetcode plugin is not initialized in this guild.",
+                )
+
+            member = await crud.get_member(
+                session, guild_id=interaction.guild_id, member_id=interaction.user.id
+            )
+            if not member:
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail="You have not joined the daily challenge.",
+                )
+
+            role = interaction.guild.get_role(leetcode_config.role_id)
+            if not role:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail=f"Inconsistent role configuration. Please contact the administrator to reconfigure the role. Previous role id: {leetcode_config.role_id}",
+                )
+
+            await interaction.user.remove_roles(
+                role, reason="Quit the daily challenge."
+            )
+            await session.delete(member)
+            await session.commit()
+
+        await interaction.followup.send(
+            "Successfully quit the leetcode daily challenge.", ephemeral=True
+        )
+
+    @leetcode_group.command(
+        name="update",
+        description="Fetch and update all leetcode problems. (This is a heavy operation. Please use with caution.)",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "update",
+                    Locale.american_english: "update",
+                    Locale.chinese: "更新",
+                },
+                "description": {
+                    Locale.british_english: "Fetch and update all leetcode problems. (This is a heavy operation. Please use with caution.)",
+                    Locale.american_english: "Fetch and update all leetcode problems. (This is a heavy operation. Please use with caution.)",
+                    Locale.chinese: "获取并更新所有力扣问题。（这是一个耗时操作，请谨慎使用。）",
+                },
+            }
+        },
+    )
+    @is_guild_admin()
+    async def leetcode_update(self, interaction: Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        async with self.db_session() as session:
+            leetcode_config = await crud.get_leetcode_config(
+                session, guild_id=interaction.guild_id
+            )
+            if not leetcode_config:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail="Leetcode plugin is not initialized in this guild.",
+                )
+
+            session = await self._get_http_session(interaction.guild_id)
+            async with session.get("https://leetcode.com/api/problems/all") as response:
+                if not response.ok:
+                    if response.status == 403:
+                        raise CommandArgumentError(
+                            status_code=403,
+                            detail="Failed to get leetcode questions: Please check if the cookie status is valid and try again.",
+                        )
+                    raise CommandArgumentError(
+                        status_code=400,
+                        detail=f"Failed to get leetcode questions: {response.status} {response.reason}",
+                    )
+                data = await response.text()
+                data = json_loads(data)
+
+            for question in data["stat_status_pairs"]:
+                question_id = question["stat"]["frontend_question_id"]
+                question = await crud.get_question_by_id(
+                    session, question_id=question_id
+                )
+                if question:
+                    question.title = question["stat"]["question__title"]
+                    question.title_slug = question["stat"]["question__title_slug"]
+                    question.difficulty = question["difficulty"]["level"]
+                    question.paid_only = question["paid_only"]
+                else:
+                    question = Question(
+                        id=question_id,
+                        title=question["stat"]["question__title"],
+                        title_slug=question["stat"]["question__title_slug"],
+                        difficulty=question["difficulty"]["level"],
+                        paid_only=question["paid_only"],
+                    )
+                    session.add(question)
+            await session.commit()
+
+        await interaction.followup.send(
+            f"Successfully updated {len(data['stat_status_pairs'])} leetcode questions.",
+            ephemeral=True,
+        )
+
+    async def _question_autocomplete(self, interaction: Interaction, current: str):
+        async with self.db_session() as session:
+            questions = await crud.get_question_with_id_number(session, current)
+
+        return [
+            app_commands.Choice(
+                name=f"{question.id}. {question.title}", value=question.id
+            )
+            for question in questions
+        ]
+
+    @leetcode_group.command(
+        name="question",
+        description="Get the leetcode question with the given question id.",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "question",
+                    Locale.american_english: "question",
+                    Locale.chinese: "问题",
+                },
+                "description": {
+                    Locale.british_english: "Get the leetcode question with the given question id.",
+                    Locale.american_english: "Get the leetcode question with the given question id.",
+                    Locale.chinese: "显示对应编号的力扣问题.",
+                },
+                "parameters": {
+                    "question_id": {
+                        "name": {
+                            Locale.british_english: "question_id",
+                            Locale.american_english: "question_id",
+                            Locale.chinese: "问题编号",
+                        },
+                        "description": {
+                            Locale.british_english: "The id of the leetcode question.",
+                            Locale.american_english: "The id of the leetcode question.",
+                            Locale.chinese: "要获取的问题编号。",
+                        },
+                    },
+                },
+            }
+        },
+    )
+    @app_commands.describe(question_id="The id of the leetcode question.")
+    @app_commands.autocomplete(question_id=_question_autocomplete)
+    async def leetcode_question(self, interaction: Interaction, question_id: int):
+        await interaction.response.defer(ephemeral=True)
+        async with self.db_session() as session:
+            question = await crud.get_question_by_id(session, question_id=question_id)
+            if not question:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail=f"Question {question_id} not found. Please check the question id or update the questions with `/leetcode update` and try again.",
+                )
+        session = await self._get_http_session(interaction.guild_id)
+        async with session.post(
+            "https://leetcode.com/graphql",
+            data={
+                "operationName": "questionData",
+                "variables": {"titleSlug": question.title_slug},
+                "query": _get_question_graphql_query(),
+            },
+        ) as response:
+            if not response.ok:
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail=f"Failed to get question {question_id}: {response.status} {response.reason}",
+                )
+            data = await response.json()
+            data = data["data"]["question"]
+
+        question_id = data["questionFrontendId"]
+        title = data["title"]
+        question_link = f"https://leetcode.com/problems/{data['titleSlug']}"
+        ac_rate = data["acRate"]
+        difficulty = data["difficulty"]
+        likes = data["likes"]
+        dislikes = data["dislikes"]
+        is_paid_only = data["isPaidOnly"]
+        has_solution = data["hasSolution"]
+        solution_link = f"{question_link}/solution"
+        topics_tags = data["topicTags"]
+        similar_questions = json_loads(data["similarQuestions"])
+
+        embed = Embed()
+        embed.title = f"Leetcode Problem {question_id}{' 💰' if is_paid_only else ''}"
+        embed.description = f"[{title}]({question_link})({difficulty}){f' [Solution]({solution_link})' if has_solution else ''}"
+        embed.add_field(name="Acceptance", value=f"{round(ac_rate, 2)}%", inline=True)
+        embed.add_field(name="👍 Like", value=likes, inline=True)
+        embed.add_field(name="👎 Dislike", value=dislikes, inline=True)
+
+        topic_field_value = ""
+        for i in range(len(topics_tags)):
+            value = f"[{topics_tags[i]['name']}](https://leetcode.com/tag/{topics_tags[i]['slug']})"
+            if len(topic_field_value) + len(value) > 1024:
+                break
+            topic_field_value += value
+            if i < len(topics_tags) - 1:
+                topic_field_value += ", "
+        embed.add_field(name="Related topics", value=topic_field_value, inline=False)
+
+        similar_questions_field_value = ""
+        for i in range(len(similar_questions)):
+            value = f"[{similar_questions[i]['title']}](https://leetcode.com/problems/{similar_questions[i]['titleSlug']})({similar_questions[i]['difficulty']})"
+            if len(similar_questions_field_value) + len(value) > 1024:
+                break
+            similar_questions_field_value += value
+            if i < len(similar_questions) - 1:
+                similar_questions_field_value += "\n"
+
+        if len(similar_questions) > 0:
+            embed.add_field(
+                name="Similar questions",
+                value=similar_questions_field_value,
+                inline=False,
+            )
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @leetcode_group.command(
+        name="today",
+        description="Get the leetcode daily challenge question of today.",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "today",
+                    Locale.american_english: "today",
+                    Locale.chinese: "每日挑战",
+                },
+                "description": {
+                    Locale.british_english: "Get the leetcode daily challenge question of today.",
+                    Locale.american_english: "Get the leetcode daily challenge question of today.",
+                    Locale.chinese: "获取今天的力扣每日挑战问题。",
+                },
+            }
+        },
+    )
+    async def leetcode_today(self, interaction: Interaction):
+        await interaction.response.defer(ephemeral=True)
+        session = await self._get_http_session(interaction.guild_id)
+
+        async with session.post(
+            "https://leetcode.com/graphql",
+            data={
+                "operationName": "questionOfToday",
+                "variables": {},
+                "query": _get_daily_challenge_graphql_query(),
+            },
+        ) as response:
+            if not response.ok:
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail=f"Failed to get daily challenge question: {response.status} {response.reason}",
+                )
+            data = await response.json()
+            data = data["data"]["activeDailyCodingChallengeQuestion"]
+
+        date = data["date"]
+        question = data["question"]
+        question_id = question["questionFrontendId"]
+        title = question["title"]
+        question_link = f"https://leetcode.com{data['link']}"
+        ac_rate = question["acRate"]
+        difficulty = question["difficulty"]
+        likes = question["likes"]
+        dislikes = question["dislikes"]
+        is_paid_only = question["isPaidOnly"]
+        has_solution = question["hasSolution"]
+        solution_link = f"{question_link}/solution"
+        topics_tags = question["topicTags"]
+        similar_questions = json_loads(question["similarQuestions"])
+
+        embed = Embed()
+        embed.title = f"🏆 Leetcode Daily Coding Challenge ({date})"
+        embed.add_field(
+            name=f"Problem {question_id}{' 💰' if is_paid_only else ''}",
+            value=f"[{title}]({question_link})({difficulty}){f' [Solution]({solution_link})' if has_solution else ''}",
+            inline=False,
+        )
+
+        embed.add_field(name="Acceptance", value=f"{round(ac_rate, 2)}%", inline=True)
+        embed.add_field(name="👍 Like", value=likes, inline=True)
+        embed.add_field(name="👎 Dislike", value=dislikes, inline=True)
+
+        topic_field_value = ""
+        for i in range(len(topics_tags)):
+            value = f"[{topics_tags[i]['name']}](https://leetcode.com/tag/{topics_tags[i]['slug']})"
+            if len(topic_field_value) + len(value) > 1024:
+                break
+            topic_field_value += value
+            if i < len(topics_tags) - 1:
+                topic_field_value += ", "
+        embed.add_field(name="Related topics", value=topic_field_value, inline=False)
+
+        similar_questions_field_value = ""
+        for i in range(len(similar_questions)):
+            value = f"[{similar_questions[i]['title']}](https://leetcode.com/problems/{similar_questions[i]['titleSlug']})({similar_questions[i]['difficulty']})"
+            if len(similar_questions_field_value) + len(value) > 1024:
+                break
+            similar_questions_field_value += value
+            if i < len(similar_questions) - 1:
+                similar_questions_field_value += "\n"
+
+        if len(similar_questions) > 0:
+            embed.add_field(
+                name="Similar questions",
+                value=similar_questions_field_value,
+                inline=False,
+            )
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
     async def _create_role(
         self,
         guild: Guild,
@@ -781,6 +1260,87 @@ class LeetcodeCog(
             )
         except IndexError or ValueError:
             return None
+
+
+def _get_question_graphql_query() -> str:
+    titleSlug = Variable(name="titleSlug", type="String!")
+    query = Query(
+        name="question",
+        arguments=[Argument(name="titleSlug", value=titleSlug)],
+        fields=[
+            Field(name="questionId"),
+            Field(name="questionFrontendId"),
+            Field(name="title"),
+            Field(name="titleSlug"),
+            Field(name="acRate"),
+            Field(name="difficulty"),
+            Field(name="freqBar"),
+            Field(name="likes"),
+            Field(name="dislikes"),
+            Field(name="content"),
+            Field(name="similarQuestions"),
+            Field(name="isFavor"),
+            Field(name="isPaidOnly"),
+            Field(name="status"),
+            Field(name="hasVideoSolution"),
+            Field(name="hasSolution"),
+            Field(
+                name="topicTags",
+                fields=[
+                    Field(name="name"),
+                    Field(name="id"),
+                    Field(name="slug"),
+                ],
+            ),
+        ],
+    )
+    operation = Operation(
+        type="query", name="questionData", variables=[titleSlug], queries=[query]
+    )
+    return operation.render()
+
+
+def _get_daily_challenge_graphql_query() -> str:
+    question = Field(
+        name="question",
+        fields=[
+            Field(name="questionId"),
+            Field(name="questionFrontendId"),
+            Field(name="title"),
+            Field(name="titleSlug"),
+            Field(name="acRate"),
+            Field(name="difficulty"),
+            Field(name="freqBar"),
+            Field(name="likes"),
+            Field(name="dislikes"),
+            Field(name="content"),
+            Field(name="similarQuestions"),
+            Field(name="isFavor"),
+            Field(name="isPaidOnly"),
+            Field(name="status"),
+            Field(name="hasVideoSolution"),
+            Field(name="hasSolution"),
+            Field(
+                name="topicTags",
+                fields=[
+                    Field(name="name"),
+                    Field(name="id"),
+                    Field(name="slug"),
+                ],
+            ),
+        ],
+    )
+    query = Query(
+        name="activeDailyCodingChallengeQuestion",
+        fields=[
+            Field(name="date"),
+            Field(name="userStatus"),
+            Field(name="link"),
+            question,
+        ],
+    )
+    operation = Operation(type="query", name="questionOfToday", queries=[query])
+    return operation.render()
 
 
 async def _daily_challenge_start():
