@@ -1035,6 +1035,174 @@ class LeetcodeCog(
 
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @leetcode_group.command(
+        name="get_submission",
+        description="Get the leetcode submission with the given submission id.",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "get_submission",
+                    Locale.american_english: "get_submission",
+                    Locale.chinese: "获取提交",
+                },
+                "description": {
+                    Locale.british_english: "Get the leetcode submission with the given submission id.",
+                    Locale.american_english: "Get the leetcode submission with the given submission id.",
+                    Locale.chinese: "获取指定ID的提交。",
+                },
+                "parameters": {
+                    "submission_id": {
+                        "name": {
+                            Locale.british_english: "submission_id",
+                            Locale.american_english: "submission_id",
+                            Locale.chinese: "提交id",
+                        },
+                        "description": {
+                            Locale.british_english: "The id of the leetcode submission.",
+                            Locale.american_english: "The id of the leetcode submission.",
+                            Locale.chinese: "要获取提交的ID。",
+                        },
+                    },
+                },
+            }
+        },
+    )
+    @app_commands.describe(submission_id="The id of the leetcode submission.")
+    async def leetcode_get_submission(
+        self, interaction: Interaction, submission_id: int
+    ):
+        await interaction.response.defer(ephemeral=True)
+
+        session = await self._get_http_session(interaction.guild_id)
+        async with session.post(
+            "https://leetcode.com/graphql",
+            json={
+                "operationName": "submissionDetails",
+                "variables": {"submissionId": submission_id},
+                "query": _get_submission_graph_query(),
+            },
+        ) as response:
+            if not response.ok:
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail=f"Failed to get submission {submission_id}: {response.status} {response.reason}",
+                )
+            data = await response.json()
+            data = data["data"]["submissionDetail"]
+
+        if not data:
+            raise CommandArgumentError(
+                status_code=404,
+                detail=f"Submission `{submission_id}` not found or not accessible. Please check the input submission id and cookie status and try again.",
+            )
+
+        async with self.db_session() as session:
+            leetcode_config = await crud.get_leetcode_config(
+                session, interaction.guild_id
+            )
+            guild_timezone = (
+                leetcode_config.guild_timezone if leetcode_config else "UTC"
+            )
+
+        question_id = data["question"]["questionFrontendId"]
+        question_title = data["question"]["title"]
+        question_link = f"https://leetcode.com/problems/{data['question']['titleSlug']}"
+        question_difficulty = data["question"]["difficulty"]
+        question_is_paid_only = data["question"]["isPaidOnly"]
+        submission_runtime_display = data["runtimeDisplay"]
+        submission_runtime_percentile = data["runtimePercentile"]
+        submission_runtime_complexity = None
+        submission_memory_display = data["memoryDisplay"]
+        submission_memory_percentile = data["memoryPercentile"]
+        submission_memory_complexity = None
+        submission_author = data["user"]["username"]
+        submission_author_icon = data["user"]["profile"]["userAvatar"]
+        submission_language = data["lang"]["verboseName"]
+        submission_status = _get_status_display(data["statusCode"])
+        submission_datetime = (
+            datetime.fromtimestamp(data["timestamp"], timezone.utc)
+            .astimezone(pytz_timezone(guild_timezone))
+            .strftime("%Y-%m-%d %H:%M:%S %Z")
+        )
+        submission_code = data["code"]
+        submission_notes = data["notes"]
+        submission_topic_tags = data["topicTags"]
+
+        if submission_status == "Accepted":
+            session = await self._get_http_session(interaction.guild_id)
+            async with session.post(
+                "https://leetcode.com/graphql",
+                json={
+                    "operationName": "submissionComplexity",
+                    "query": _get_submission_complexity_graph_query(),
+                    "variables": {"submissionId": str(submission_id)},
+                },
+            ) as response:
+                if response.ok:
+                    data = await response.json()
+                    data = data["data"]["submissionComplexity"]
+                    submission_runtime_complexity = data["runtimeComplexity"][
+                        "complexity"
+                    ]
+                    submission_memory_complexity = data["memoryComplexity"][
+                        "complexity"
+                    ]
+
+        embed = Embed()
+        embed.color = (
+            Colour.green() if submission_status == "Accepted" else Colour.red()
+        )
+        embed.set_author(name=submission_author, icon_url=submission_author_icon)
+        embed.title = f"✍️ Leetcode Daily Coding Challenge Submission"
+        embed.url = f"https://leetcode.com/submissions/detail/{submission_id}"
+
+        embed.add_field(
+            name=f"Problem {question_id}{f' 💰' if question_is_paid_only else ''}",
+            value=f"[{question_title}]({question_link}) ({question_difficulty})",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="Runtime",
+            value=f"{submission_runtime_display}{f' (Beats: {submission_runtime_percentile:.2f}% of submissions)' if submission_runtime_percentile else ''}{f'\n{submission_runtime_complexity}' if submission_runtime_complexity else ''}",
+            inline=True,
+        )
+        embed.add_field(
+            name="Memory",
+            value=f"{submission_memory_display}{f' (Beats: {submission_memory_percentile:.2f}% of submissions)' if submission_memory_percentile else ''}{f'\n{submission_runtime_complexity}' if submission_runtime_complexity else ''}",
+            inline=True,
+        )
+
+        highlight_type = _get_highlight_type(submission_language)
+
+        code_value = _generate_embed_text_value(
+            f"{highlight_type}\n{submission_code}", render_type="markdown"
+        )
+        embed.add_field(
+            name=f"Submission code ({submission_language})",
+            value=code_value,
+            inline=False,
+        )
+
+        if submission_notes:
+            notes_value = _generate_embed_text_value(
+                submission_notes, render_type="markdown"
+            )
+            embed.add_field(name="Notes", value=notes_value, inline=False)
+
+        if submission_topic_tags:
+            topic_field_value = ""
+            for i in range(len(submission_topic_tags)):
+                value = f"[{submission_topic_tags[i]['name']}](https://leetcode.com/tag/{submission_topic_tags[i]['slug']})"
+                if len(topic_field_value) + len(value) > 1024:
+                    break
+                topic_field_value += value
+                if i < len(submission_topic_tags) - 1:
+                    topic_field_value += ", "
+            embed.add_field(name="Related tags", value=topic_field_value, inline=False)
+
+        embed.set_footer(text=f"{submission_id} | {submission_datetime}")
+
     async def _create_role(
         self,
         guild: Guild,
@@ -1264,87 +1432,6 @@ class LeetcodeCog(
             return None
 
 
-def _get_question_graphql_query() -> str:
-    titleSlug = Variable(name="titleSlug", type="String!")
-    query = Query(
-        name="question",
-        arguments=[Argument(name="titleSlug", value=titleSlug)],
-        fields=[
-            Field(name="questionId"),
-            Field(name="questionFrontendId"),
-            Field(name="title"),
-            Field(name="titleSlug"),
-            Field(name="acRate"),
-            Field(name="difficulty"),
-            Field(name="freqBar"),
-            Field(name="likes"),
-            Field(name="dislikes"),
-            Field(name="content"),
-            Field(name="similarQuestions"),
-            Field(name="isFavor"),
-            Field(name="isPaidOnly"),
-            Field(name="status"),
-            Field(name="hasVideoSolution"),
-            Field(name="hasSolution"),
-            Field(
-                name="topicTags",
-                fields=[
-                    Field(name="name"),
-                    Field(name="id"),
-                    Field(name="slug"),
-                ],
-            ),
-        ],
-    )
-    operation = Operation(
-        type="query", name="questionData", variables=[titleSlug], queries=[query]
-    )
-    return operation.render()
-
-
-def _get_daily_challenge_graphql_query() -> str:
-    question = Field(
-        name="question",
-        fields=[
-            Field(name="questionId"),
-            Field(name="questionFrontendId"),
-            Field(name="title"),
-            Field(name="titleSlug"),
-            Field(name="acRate"),
-            Field(name="difficulty"),
-            Field(name="freqBar"),
-            Field(name="likes"),
-            Field(name="dislikes"),
-            Field(name="content"),
-            Field(name="similarQuestions"),
-            Field(name="isFavor"),
-            Field(name="isPaidOnly"),
-            Field(name="status"),
-            Field(name="hasVideoSolution"),
-            Field(name="hasSolution"),
-            Field(
-                name="topicTags",
-                fields=[
-                    Field(name="name"),
-                    Field(name="id"),
-                    Field(name="slug"),
-                ],
-            ),
-        ],
-    )
-    query = Query(
-        name="activeDailyCodingChallengeQuestion",
-        fields=[
-            Field(name="date"),
-            Field(name="userStatus"),
-            Field(name="link"),
-            question,
-        ],
-    )
-    operation = Operation(type="query", name="questionOfToday", queries=[query])
-    return operation.render()
-
-
 async def _daily_challenge_start():
     cog = LeetcodeCog.get_instance()
     if not cog:
@@ -1442,3 +1529,243 @@ async def _daily_challenge_end():
             if not channel:
                 continue
             await channel.send("Daily challenge ended.")
+
+
+def _get_question_graphql_query() -> str:
+    titleSlug = Variable(name="titleSlug", type="String!")
+    query = Query(
+        name="question",
+        arguments=[Argument(name="titleSlug", value=titleSlug)],
+        fields=[
+            Field(name="questionId"),
+            Field(name="questionFrontendId"),
+            Field(name="title"),
+            Field(name="titleSlug"),
+            Field(name="acRate"),
+            Field(name="difficulty"),
+            Field(name="freqBar"),
+            Field(name="likes"),
+            Field(name="dislikes"),
+            Field(name="content"),
+            Field(name="similarQuestions"),
+            Field(name="isFavor"),
+            Field(name="isPaidOnly"),
+            Field(name="status"),
+            Field(name="hasVideoSolution"),
+            Field(name="hasSolution"),
+            Field(
+                name="topicTags",
+                fields=[
+                    Field(name="name"),
+                    Field(name="id"),
+                    Field(name="slug"),
+                ],
+            ),
+        ],
+    )
+    operation = Operation(
+        type="query", name="questionData", variables=[titleSlug], queries=[query]
+    )
+    return operation.render()
+
+
+def _get_daily_challenge_graphql_query() -> str:
+    question = Field(
+        name="question",
+        fields=[
+            Field(name="questionId"),
+            Field(name="questionFrontendId"),
+            Field(name="title"),
+            Field(name="titleSlug"),
+            Field(name="acRate"),
+            Field(name="difficulty"),
+            Field(name="freqBar"),
+            Field(name="likes"),
+            Field(name="dislikes"),
+            Field(name="content"),
+            Field(name="similarQuestions"),
+            Field(name="isFavor"),
+            Field(name="isPaidOnly"),
+            Field(name="status"),
+            Field(name="hasVideoSolution"),
+            Field(name="hasSolution"),
+            Field(
+                name="topicTags",
+                fields=[
+                    Field(name="name"),
+                    Field(name="id"),
+                    Field(name="slug"),
+                ],
+            ),
+        ],
+    )
+    query = Query(
+        name="activeDailyCodingChallengeQuestion",
+        fields=[
+            Field(name="date"),
+            Field(name="userStatus"),
+            Field(name="link"),
+            question,
+        ],
+    )
+    operation = Operation(type="query", name="questionOfToday", queries=[query])
+    return operation.render()
+
+
+def _get_submission_graph_query() -> str:
+    submission_id = Variable(name="submissionId", type="Int!")
+    user = Field(
+        name="user",
+        fields=[
+            Field(name="username"),
+            Field(
+                name="profile",
+                fields=[Field(name="realName"), Field(name="userAvatar")],
+            ),
+        ],
+    )
+    lang = Field(name="lang", fields=[Field(name="name"), Field(name="verboseName")])
+    question = Field(
+        name="question",
+        fields=[
+            Field(name="questionFrontendId"),
+            Field(name="title"),
+            Field(name="difficulty"),
+            Field(name="isPaidOnly"),
+        ],
+    )
+    topic_tags = Field(
+        name="topicTags",
+        fields=[Field(name="tagId"), Field(slug="slug"), Field(name="name")],
+    )
+    query = Query(
+        name="submissionDetails",
+        arguments=[Argument(name="submissionId", value=submission_id)],
+        fields=[
+            Field(name="runtime"),
+            Field(name="runtimeDisplay"),
+            Field(name="runtimePercentile"),
+            Field(name="memory"),
+            Field(name="memoryDisplay"),
+            Field(name="memoryPercentile"),
+            Field(name="memoryDistribution"),
+            Field(name="code"),
+            Field(name="timestamp"),
+            Field(name="statusCode"),
+            user,
+            lang,
+            question,
+            Field(name="notes"),
+            topic_tags,
+            Field(name="runtimeError"),
+            Field(name="compileError"),
+            Field(name="lastTestcase"),
+        ],
+    )
+    operation = Operation(
+        type="query",
+        name="submissionDetails",
+        variables=[submission_id],
+        queries=[query],
+    )
+    return operation.render()
+
+
+def _get_submission_complexity_graph_query() -> str:
+    submission_id = Variable(name="submissionId", type="ID!")
+    query = Query(
+        name="submissionComplexity",
+        arguments=[Argument(name="submissionId", value=submission_id)],
+        fields=[
+            Field(
+                name="timeComplexity",
+                fields=[
+                    Field(name="complexity"),
+                    Field(name="displayName"),
+                    Field(name="funcStr"),
+                    Field(name="vote"),
+                ],
+            ),
+            Field(
+                name="memoryComplexity",
+                fields=[
+                    Field(name="complexity"),
+                    Field(name="displayName"),
+                    Field(name="funcStr"),
+                    Field(name="vote"),
+                ],
+            ),
+            Field(name="isLimited"),
+        ],
+    )
+    operation = Operation(
+        type="query",
+        name="submissionComplexity",
+        variables=[submission_id],
+        queries=[query],
+    )
+    return operation.render()
+
+
+def _get_highlight_type(language: str) -> str:
+    support_highlight = {
+        "python3": "python",
+        "python": "python",
+        "javascript": "javascript",
+        "java": "java",
+        "c++": "cpp",
+        "c": "c",
+        "c#": "csharp",
+        "sql": "sql",
+        "mysql": "sql",
+        "go": "go",
+        "ruby": "ruby",
+        "swift": "swift",
+        "scala": "scala",
+        "kotlin": "kotlin",
+        "rust": "rust",
+        "php": "php",
+        "typescript": "typescript",
+        "r": "r",
+        "bash": "bash",
+        "shell": "bash",
+        "html": "html",
+        "css": "css",
+        "scala": "scala",
+    }
+    return support_highlight.get(language.lower(), language.lower())
+
+
+def _generate_embed_text_value(text: str, render_type: str = "plain_text"):
+    length = len(text)
+    if render_type == "markdown":
+        if length + 6 > 1024:
+            return f"```{text[:1024 - 9]}...```"
+        return f"```{text}```"
+
+    if length > 1024:
+        return f"{text[:1024 - 3]}..."
+
+    return text
+
+
+def _get_status_display(status_code: int):
+    if status_code == 10:
+        return "Accepted"
+    if status_code == 11:
+        return "Wrong Answer"
+    if status_code == 12:
+        return "Memory Limit Exceeded"
+    if status_code == 13:
+        return "Output Limit Exceeded"
+    if status_code == 14:
+        return "Time Limit Exceeded"
+    if status_code == 15:
+        return "Runtime Error"
+    if status_code == 16:
+        return "Internal Error"
+    if status_code == 17:
+        return "Compile Error"
+    if status_code == 18:
+        return "Timeout"
+    return "Unknown Status"
