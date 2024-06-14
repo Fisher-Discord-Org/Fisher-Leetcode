@@ -1636,7 +1636,7 @@ def _get_submission_graph_query() -> str:
     )
     topic_tags = Field(
         name="topicTags",
-        fields=[Field(name="tagId"), Field(slug="slug"), Field(name="name")],
+        fields=[Field(name="tagId"), Field(name="slug"), Field(name="name")],
     )
     query = Query(
         name="submissionDetails",
