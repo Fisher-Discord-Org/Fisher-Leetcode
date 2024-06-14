@@ -831,7 +831,7 @@ class LeetcodeCog(
             app_commands.Choice(
                 name=f"{question.id}. {question.title}", value=question.id
             )
-            for question in questions
+            for question in questions[:25]
         ]
 
     @leetcode_group.command(
