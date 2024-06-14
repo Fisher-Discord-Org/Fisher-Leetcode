@@ -909,7 +909,7 @@ class LeetcodeCog(
 
         embed = Embed()
         embed.title = f"Leetcode Problem {question_id}{' 💰' if is_paid_only else ''}"
-        embed.description = f"[{title}]({question_link})({difficulty}){f' [Solution]({solution_link})' if has_solution else ''}"
+        embed.description = f"[{title}]({question_link}) ({difficulty}){f' [Solution]({solution_link})' if has_solution else ''}"
         embed.add_field(name="Acceptance", value=f"{round(ac_rate, 2)}%", inline=True)
         embed.add_field(name="👍 Like", value=likes, inline=True)
         embed.add_field(name="👎 Dislike", value=dislikes, inline=True)
@@ -926,7 +926,7 @@ class LeetcodeCog(
 
         similar_questions_field_value = ""
         for i in range(len(similar_questions)):
-            value = f"[{similar_questions[i]['title']}](https://leetcode.com/problems/{similar_questions[i]['titleSlug']})({similar_questions[i]['difficulty']})"
+            value = f"[{similar_questions[i]['title']}](https://leetcode.com/problems/{similar_questions[i]['titleSlug']}) ({similar_questions[i]['difficulty']})"
             if len(similar_questions_field_value) + len(value) > 1024:
                 break
             similar_questions_field_value += value
@@ -999,7 +999,7 @@ class LeetcodeCog(
         embed.title = f"🏆 Leetcode Daily Coding Challenge ({date})"
         embed.add_field(
             name=f"Problem {question_id}{' 💰' if is_paid_only else ''}",
-            value=f"[{title}]({question_link})({difficulty}){f' [Solution]({solution_link})' if has_solution else ''}",
+            value=f"[{title}]({question_link}) ({difficulty}){f' [Solution]({solution_link})' if has_solution else ''}",
             inline=False,
         )
 
@@ -1019,7 +1019,7 @@ class LeetcodeCog(
 
         similar_questions_field_value = ""
         for i in range(len(similar_questions)):
-            value = f"[{similar_questions[i]['title']}](https://leetcode.com/problems/{similar_questions[i]['titleSlug']})({similar_questions[i]['difficulty']})"
+            value = f"[{similar_questions[i]['title']}](https://leetcode.com/problems/{similar_questions[i]['titleSlug']}) ({similar_questions[i]['difficulty']})"
             if len(similar_questions_field_value) + len(value) > 1024:
                 break
             similar_questions_field_value += value
