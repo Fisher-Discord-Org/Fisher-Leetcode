@@ -880,7 +880,7 @@ class LeetcodeCog(
         session = await self._get_http_session(interaction.guild_id)
         async with session.post(
             "https://leetcode.com/graphql",
-            data={
+            json={
                 "operationName": "questionData",
                 "variables": {"titleSlug": question.title_slug},
                 "query": _get_question_graphql_query(),
@@ -966,7 +966,7 @@ class LeetcodeCog(
 
         async with session.post(
             "https://leetcode.com/graphql",
-            data={
+            json={
                 "operationName": "questionOfToday",
                 "variables": {},
                 "query": _get_daily_challenge_graphql_query(),
