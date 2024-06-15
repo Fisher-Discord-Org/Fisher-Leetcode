@@ -668,7 +668,24 @@ class LeetcodeCog(
             f"Remind time set to {hour:02d}:{minute:02d}:{second:02d}.", ephemeral=True
         )
 
-    @leetcode_group.command()
+    @leetcode_group.command(
+        name="join",
+        description="Join the leetcode daily challenge in the current guild.",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "join",
+                    Locale.american_english: "join",
+                    Locale.chinese: "加入",
+                },
+                "description": {
+                    Locale.british_english: "Join the leetcode daily challenge in the current guild.",
+                    Locale.american_english: "Join the leetcode daily challenge in the current guild.",
+                    Locale.chinese: "加入当前服务器的力扣每日挑战。",
+                },
+            }
+        },
+    )
     async def leetcode_join(self, interaction: Interaction):
         async with self.db_session() as session:
             leetcode_config = await crud.get_leetcode_config(
@@ -1312,7 +1329,24 @@ class LeetcodeCog(
 
         await interaction.followup.send(message, ephemeral=True)
 
-    @leetcode_group.command()
+    @leetcode_group.command(
+        name="daily_progress",
+        description="Show each participant's completion status of the leetcode daily challenge.",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "daily_progress",
+                    Locale.american_english: "daily_progress",
+                    Locale.chinese: "每日进度",
+                },
+                "description": {
+                    Locale.british_english: "Show each participant's completion status of the leetcode daily challenge.",
+                    Locale.american_english: "Show each participant's completion status of the leetcode daily challenge.",
+                    Locale.chinese: "显示每个参与者的力扣每日挑战完成情况。",
+                },
+            }
+        },
+    )
     async def leetcode_daily_progress(self, interaction: Interaction):
         await interaction.response.defer(ephemeral=True)
 
@@ -1331,19 +1365,36 @@ class LeetcodeCog(
                     status_code=400,
                     detail="The daily challenge is not enabled in this guild.",
                 )
+            common_message = "Daily progress"
+            completed_message = ""
+            uncompleted_message = ""
 
-            uncompleted_members = await crud.get_uncompleted_user_ids(
-                session, interaction.guild_id
+            completed_user_ids = await crud.get_completed_user_ids(
+                session, leetcode_config.guild_id, leetcode_config.daily_challenge_date
             )
-            if not uncompleted_members:
-                message = "All members have completed the daily challenge."
-            else:
-                message = f"Currently Uncompleted members (total: {len(uncompleted_members)}):"
-                for index, member_id in enumerate(uncompleted_members):
-                    member = interaction.guild.get_member(member_id)
-                    message += f"\n{index + 1}. {member.display_name if member else f'Unknown user with id {member_id}'}"
+            if completed_user_ids:
+                completed_message = (
+                    f"\nCompleted participants (total: {len(completed_user_ids)}):"
+                )
+                for index, user_id in enumerate(completed_user_ids):
+                    member = interaction.guild.get_member(user_id)
+                    completed_message += f"\n{index + 1}. {member.display_name if member else f'Unknown user with id {user_id}'}"
 
-        await interaction.followup.send(message, ephemeral=True)
+            uncompleted_user_ids = await crud.get_uncompleted_user_ids(
+                session, leetcode_config.guild_id, leetcode_config.daily_challenge_date
+            )
+
+            if uncompleted_user_ids:
+                uncompleted_message = (
+                    f"\nUncompleted participants (total: {len(uncompleted_user_ids)}):"
+                )
+                for index, user_id in enumerate(uncompleted_user_ids):
+                    member = interaction.guild.get_member(user_id)
+                    uncompleted_message += f"\n{index + 1}. {member.display_name if member else f'Unknown user with id {user_id}'}"
+
+        await interaction.followup.send(
+            common_message + completed_message + uncompleted_message, ephemeral=True
+        )
 
     async def _create_role(
         self,
