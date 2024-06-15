@@ -687,6 +687,8 @@ class LeetcodeCog(
         },
     )
     async def leetcode_join(self, interaction: Interaction):
+        await interaction.response.defer(ephemeral=True)
+
         async with self.db_session() as session:
             leetcode_config = await crud.get_leetcode_config(
                 session, guild_id=interaction.guild_id
@@ -745,6 +747,8 @@ class LeetcodeCog(
         },
     )
     async def leetcode_quit(self, interaction: Interaction):
+        await interaction.response.defer(ephemeral=True)
+
         async with self.db_session() as session:
             leetcode_config = await crud.get_leetcode_config(
                 session, guild_id=interaction.guild_id
