@@ -1287,14 +1287,14 @@ class LeetcodeCog(
         extras={
             "locale": {
                 "name": {
-                    "british_english": "leaderboard",
-                    "american_english": "leaderboard",
-                    "chinese": "排行榜",
+                    Locale.british_english: "leaderboard",
+                    Locale.american_english: "leaderboard",
+                    Locale.chinese: "排行榜",
                 },
                 "description": {
-                    "british_english": "Show the leetcode leaderboard.",
-                    "american_english": "Show the leetcode leaderboard.",
-                    "chinese": "显示力扣排行榜。",
+                    Locale.british_english: "Show the leetcode leaderboard.",
+                    Locale.american_english: "Show the leetcode leaderboard.",
+                    Locale.chinese: "显示力扣排行榜。",
                 },
             }
         },
