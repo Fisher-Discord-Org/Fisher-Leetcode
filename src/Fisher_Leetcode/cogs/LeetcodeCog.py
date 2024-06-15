@@ -1078,7 +1078,10 @@ class LeetcodeCog(
             "https://leetcode.com/graphql",
             json={
                 "operationName": "submissionDetails",
-                "variables": {"submissionId": submission_id},
+                "variables": {
+                    "submissionIntId": submission_id,
+                    "submissionId": str(submission_id),
+                },
                 "query": _get_submission_graph_query(),
             },
         ) as response:
@@ -1088,9 +1091,10 @@ class LeetcodeCog(
                     detail=f"Failed to get submission {submission_id}: {response.status} {response.reason}",
                 )
             data = await response.json()
-            data = data["data"]["submissionDetails"]
+            submission_details = data["data"]["submissionDetails"]
+            submission_complexity = data["data"]["submissionComplexity"]
 
-        if not data:
+        if not submission_details:
             raise CommandArgumentError(
                 status_code=404,
                 detail=f"Submission `{submission_id}` not found or not accessible. Please check the input submission id and cookie status and try again.",
@@ -1104,47 +1108,37 @@ class LeetcodeCog(
                 leetcode_config.guild_timezone if leetcode_config else "UTC"
             )
 
-        question_id = data["question"]["questionFrontendId"]
-        question_title = data["question"]["title"]
-        question_link = f"https://leetcode.com/problems/{data['question']['titleSlug']}"
-        question_difficulty = data["question"]["difficulty"]
-        question_is_paid_only = data["question"]["isPaidOnly"]
-        submission_runtime_display = data["runtimeDisplay"]
-        submission_runtime_percentile = data["runtimePercentile"]
-        submission_runtime_complexity = None
-        submission_memory_display = data["memoryDisplay"]
-        submission_memory_percentile = data["memoryPercentile"]
-        submission_memory_complexity = None
-        submission_author = data["user"]["username"]
-        submission_author_icon = data["user"]["profile"]["userAvatar"]
-        submission_language = data["lang"]["verboseName"]
-        submission_status = _get_status_display(data["statusCode"])
+        question_id = submission_details["question"]["questionFrontendId"]
+        question_title = submission_details["question"]["title"]
+        question_link = f"https://leetcode.com/problems/{submission_details['question']['titleSlug']}"
+        question_difficulty = submission_details["question"]["difficulty"]
+        question_is_paid_only = submission_details["question"]["isPaidOnly"]
+        submission_status = _get_status_display(submission_details["statusCode"])
+        submission_runtime_display = submission_details["runtimeDisplay"]
+        submission_runtime_percentile = submission_details["runtimePercentile"]
+        submission_runtime_complexity = (
+            submission_complexity["timeComplexity"]["complexity"]
+            if submission_status == "Accepted"
+            else None
+        )
+        submission_memory_display = submission_details["memoryDisplay"]
+        submission_memory_percentile = submission_details["memoryPercentile"]
+        submission_memory_complexity = (
+            submission_complexity["memoryComplexity"]["complexity"]
+            if submission_status == "Accepted"
+            else None
+        )
+        submission_author = submission_details["user"]["username"]
+        submission_author_icon = submission_details["user"]["profile"]["userAvatar"]
+        submission_language = submission_details["lang"]["verboseName"]
         submission_datetime = (
-            datetime.fromtimestamp(data["timestamp"], timezone.utc)
+            datetime.fromtimestamp(submission_details["timestamp"], timezone.utc)
             .astimezone(pytz_timezone(guild_timezone))
             .strftime("%Y-%m-%d %H:%M:%S %Z")
         )
-        submission_code = data["code"]
-        submission_notes = data["notes"]
-        submission_topic_tags = data["topicTags"]
-
-        if submission_status == "Accepted":
-            session = await self._get_http_session(interaction.guild_id)
-            async with session.post(
-                "https://leetcode.com/graphql",
-                json={
-                    "operationName": "submissionComplexity",
-                    "query": _get_submission_complexity_graph_query(),
-                    "variables": {"submissionId": str(submission_id)},
-                },
-            ) as response:
-                if response.ok:
-                    data = await response.json()
-                    data = data["data"]["submissionComplexity"]
-                    submission_runtime_complexity = data["timeComplexity"]["complexity"]
-                    submission_memory_complexity = data["memoryComplexity"][
-                        "complexity"
-                    ]
+        submission_code = submission_details["code"]
+        submission_notes = submission_details["notes"]
+        submission_topic_tags = submission_details["topicTags"]
 
         embed = Embed()
         embed.color = (
@@ -1160,14 +1154,16 @@ class LeetcodeCog(
             inline=False,
         )
 
+        embed.add_field(name="Status", value=submission_status, inline=False)
+
         embed.add_field(
             name="Runtime",
-            value=f"{submission_runtime_display}{f' (Beats: {submission_runtime_percentile:.2f}% of submissions)' if submission_runtime_percentile else ''}{f'\n{submission_runtime_complexity}' if submission_runtime_complexity else ''}",
+            value=f"{submission_runtime_display}{f' (Beats: {submission_runtime_percentile:.2f}%)' if submission_runtime_percentile else ''}{f'\n{submission_runtime_complexity}' if submission_runtime_complexity else ''}",
             inline=True,
         )
         embed.add_field(
             name="Memory",
-            value=f"{submission_memory_display}{f' (Beats: {submission_memory_percentile:.2f}% of submissions)' if submission_memory_percentile else ''}{f'\n{submission_memory_complexity}' if submission_memory_complexity else ''}",
+            value=f"{submission_memory_display}{f' (Beats: {submission_memory_percentile:.2f}%)' if submission_memory_percentile else ''}{f'\n{submission_memory_complexity}' if submission_memory_complexity else ''}",
             inline=True,
         )
 
@@ -1613,7 +1609,8 @@ def _get_daily_challenge_graphql_query() -> str:
 
 
 def _get_submission_graph_query() -> str:
-    submission_id = Variable(name="submissionId", type="Int!")
+    submission_int_id = Variable(name="submissionIntId", type="Int!")
+    submission_id = Variable(name="submissionId", type="ID!")
     user = Field(
         name="user",
         fields=[
@@ -1639,9 +1636,9 @@ def _get_submission_graph_query() -> str:
         name="topicTags",
         fields=[Field(name="tagId"), Field(name="slug"), Field(name="name")],
     )
-    query = Query(
+    submission_query = Query(
         name="submissionDetails",
-        arguments=[Argument(name="submissionId", value=submission_id)],
+        arguments=[Argument(name="submissionId", value=submission_int_id)],
         fields=[
             Field(name="runtime"),
             Field(name="runtimeDisplay"),
@@ -1663,18 +1660,7 @@ def _get_submission_graph_query() -> str:
             Field(name="lastTestcase"),
         ],
     )
-    operation = Operation(
-        type="query",
-        name="submissionDetails",
-        variables=[submission_id],
-        queries=[query],
-    )
-    return operation.render()
-
-
-def _get_submission_complexity_graph_query() -> str:
-    submission_id = Variable(name="submissionId", type="ID!")
-    query = Query(
+    complexity_query = Query(
         name="submissionComplexity",
         arguments=[Argument(name="submissionId", value=submission_id)],
         fields=[
@@ -1701,9 +1687,9 @@ def _get_submission_complexity_graph_query() -> str:
     )
     operation = Operation(
         type="query",
-        name="submissionComplexity",
-        variables=[submission_id],
-        queries=[query],
+        name="submissionDetails",
+        variables=[submission_int_id, submission_id],
+        queries=[submission_query, complexity_query],
     )
     return operation.render()
 
