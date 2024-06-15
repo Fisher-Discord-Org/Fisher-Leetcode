@@ -21,12 +21,11 @@ from discord.app_commands import Group
 from Fisher import Fisher, FisherCog, logger
 from Fisher.core.exceptions import CommandArgumentError
 from Fisher.utils.discord_utils import is_guild_admin
-from graphql_query import Argument, Field, Operation, Query, Variable
 from pytz import common_timezones, common_timezones_set
 from pytz import timezone as pytz_timezone
 from yarl import URL
 
-from .. import crud
+from .. import crud, graphql
 from ..models import *
 
 
@@ -43,6 +42,14 @@ class LeetcodeCog(
 
         self.scheduler = AsyncIOScheduler()
         self.http_sessions: dict[int, ClientSession] = {}
+
+    @property
+    def default_session(self) -> ClientSession:
+        if -1 not in self.http_sessions:
+            self.http_sessions[-1] = ClientSession(
+                connector=self._http_connector, connector_owner=False
+            )
+        return self.http_sessions[-1]
 
     async def cog_load(self) -> None:
         await super().cog_load()
@@ -141,11 +148,14 @@ class LeetcodeCog(
     async def _timezone_autocomplete(
         self, interaction: Interaction, current: str
     ) -> list[app_commands.Choice]:
-        return [
-            app_commands.Choice(name=tz, value=tz)
-            for tz in common_timezones
-            if current.lower().replace(" ", "_") in tz.lower().replace("_", " ")
-        ][:25]
+        choices = []
+        for tz in common_timezones:
+            if current.lower().replace("_", " ") not in tz.lower().replace("_", " "):
+                continue
+            choices.append(app_commands.Choice(name=tz, value=tz))
+            if len(choices) >= 25:
+                break
+        return choices
 
     @leetcode_group.command(
         name="init",
@@ -412,13 +422,19 @@ class LeetcodeCog(
         await interaction.followup.send("Daily challenge stopped.", ephemeral=True)
 
     async def _channel_autocomplete(self, interaction: Interaction, current: str):
-        return [
-            app_commands.Choice(
-                name=f"{channel.name} ({channel.category})", value=str(channel.id)
+        choices = []
+        for channel in interaction.guild.text_channels:
+            if current.lower() not in channel.name.lower():
+                continue
+            choices.append(
+                app_commands.Choice(
+                    name=f"{channel.name} ({channel.category})", value=str(channel.id)
+                )
             )
-            for channel in interaction.guild.text_channels
-            if current.lower() in channel.name.lower()
-        ][:25]
+            if len(choices) >= 25:
+                break
+
+        return choices
 
     @leetcode_group.command(
         name="channel",
@@ -825,13 +841,13 @@ class LeetcodeCog(
 
     async def _question_autocomplete(self, interaction: Interaction, current: str):
         async with self.db_session() as session:
-            questions = await crud.get_question_with_id_number(session, current)
+            questions = await crud.get_questions_with_id_number(session, current)
 
         return [
             app_commands.Choice(
                 name=f"{question.id}. {question.title}", value=question.id
             )
-            for question in questions[:25]
+            for question in questions
         ]
 
     @leetcode_group.command(
@@ -883,7 +899,7 @@ class LeetcodeCog(
             json={
                 "operationName": "questionData",
                 "variables": {"titleSlug": question.title_slug},
-                "query": _get_question_graphql_query(),
+                "query": graphql.get_question_graphql_query(),
             },
         ) as response:
             if not response.ok:
@@ -969,7 +985,7 @@ class LeetcodeCog(
             json={
                 "operationName": "questionOfToday",
                 "variables": {},
-                "query": _get_daily_challenge_graphql_query(),
+                "query": graphql.get_daily_challenge_graphql_query(),
             },
         ) as response:
             if not response.ok:
@@ -1082,7 +1098,7 @@ class LeetcodeCog(
                     "submissionIntId": submission_id,
                     "submissionId": str(submission_id),
                 },
-                "query": _get_submission_graph_query(),
+                "query": graphql.get_submission_graphql_query(),
             },
         ) as response:
             if not response.ok:
@@ -1198,6 +1214,136 @@ class LeetcodeCog(
         embed.set_footer(text=f"{submission_id} | {submission_datetime}")
 
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @leetcode_group.command(
+        name="list",
+        description="List all the members joined the daily challenge.",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "list",
+                    Locale.american_english: "list",
+                    Locale.chinese: "成员列表",
+                },
+                "description": {
+                    Locale.british_english: "List all the members joined the daily challenge.",
+                    Locale.american_english: "List all the members joined the daily challenge.",
+                    Locale.chinese: "列出所有参加每日挑战的成员。",
+                },
+            }
+        },
+    )
+    @is_guild_admin()
+    async def leetcode_list_members(self, interaction: Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        async with self.db_session() as session:
+            leetcode_config = await crud.get_leetcode_config(
+                session, interaction.guild_id
+            )
+            if not leetcode_config:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail="Leetcode plugin is not initialized in this guild.",
+                )
+
+            if not leetcode_config.daily_challenge_on:
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail="The daily challenge is not enabled in this guild.",
+                )
+
+            members = await crud.get_members(session, interaction.guild_id)
+            if not members:
+                message = "No members joined the daily challenge."
+            else:
+                message = f"Current participants (total: {len(members)}):\n"
+                for index, member in enumerate(members):
+                    guild_member = interaction.guild.get_member(member.user_id)
+                    message += f"{index + 1}. {guild_member.display_name if guild_member else f'Unknown user with id {member.user_id}'}"
+
+        await interaction.followup.send(message, ephemeral=True)
+
+    @leetcode_group.command(
+        name="leaderboard",
+        description="Show the leetcode leaderboard.",
+        extras={
+            "locale": {
+                "name": {
+                    "british_english": "leaderboard",
+                    "american_english": "leaderboard",
+                    "chinese": "排行榜",
+                },
+                "description": {
+                    "british_english": "Show the leetcode leaderboard.",
+                    "american_english": "Show the leetcode leaderboard.",
+                    "chinese": "显示力扣排行榜。",
+                },
+            }
+        },
+    )
+    async def leetcode_leaderboard(self, interaction: Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        async with self.db_session() as session:
+            leetcode_config = await crud.get_leetcode_config(
+                session, interaction.guild_id
+            )
+            if not leetcode_config:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail="Leetcode plugin is not initialized in this guild.",
+                )
+
+            if not leetcode_config.daily_challenge_on:
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail="The daily challenge is not enabled in this guild.",
+                )
+
+            member_scores = await crud.get_members_score(session, interaction.guild_id)
+            if not member_scores:
+                message = "Empty scoreboard."
+            else:
+                message = "Leaderboard:"
+                for index, (member_id, score) in enumerate(member_scores):
+                    member = interaction.guild.get_member(member_id)
+                    message += f"\n{index + 1}. {member.display_name if member else f"Unknown user with id {member_id}"} ({score})"
+
+        await interaction.followup.send(message, ephemeral=True)
+
+    @leetcode_group.command()
+    async def leetcode_daily_progress(self, interaction: Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        async with self.db_session() as session:
+            leetcode_config = await crud.get_leetcode_config(
+                session, interaction.guild_id
+            )
+            if not leetcode_config:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail="Leetcode plugin is not initialized in this guild.",
+                )
+
+            if not leetcode_config.daily_challenge_on:
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail="The daily challenge is not enabled in this guild.",
+                )
+
+            uncompleted_members = await crud.get_uncompleted_user_ids(
+                session, interaction.guild_id
+            )
+            if not uncompleted_members:
+                message = "All members have completed the daily challenge."
+            else:
+                message = f"Currently Uncompleted members (total: {len(uncompleted_members)}):"
+                for index, member_id in enumerate(uncompleted_members):
+                    member = interaction.guild.get_member(member_id)
+                    message += f"\n{index + 1}. {member.display_name if member else f'Unknown user with id {member_id}'}"
+
+        await interaction.followup.send(message, ephemeral=True)
 
     async def _create_role(
         self,
@@ -1429,17 +1575,92 @@ class LeetcodeCog(
 
 
 async def _daily_challenge_start():
+    today = datetime.now(timezone.utc)
     cog = LeetcodeCog.get_instance()
     if not cog:
         raise Exception("LeetcodeCog instance not found.")
 
+    session = cog.default_session
+
+    async with session.post(
+        "https://leetcode.com/graphql",
+        json={"query": graphql.get_daily_challenge_graphql_query()},
+    ) as response:
+        if not response.ok:
+            raise Exception(
+                f"Failed to get daily challenge question: {response.status} {response.reason}"
+            )
+        data = await response.json()
+        data = data["data"]["activeDailyCodingChallengeQuestion"]
+
+    date = data["date"]
+    question = data["question"]
+    question_id = question["questionFrontendId"]
+    title = question["title"]
+    question_link = f"https://leetcode.com{data['link']}"
+    ac_rate = question["acRate"]
+    difficulty = question["difficulty"]
+    likes = question["likes"]
+    dislikes = question["dislikes"]
+    is_paid_only = question["isPaidOnly"]
+    has_solution = question["hasSolution"]
+    solution_link = f"{question_link}/solution"
+    topics_tags = question["topicTags"]
+    similar_questions = json_loads(question["similarQuestions"])
+
+    embed = Embed()
+    embed.title = f"🏆 Leetcode Daily Coding Challenge ({date})"
+    embed.add_field(
+        name=f"Problem {question_id}{' 💰' if is_paid_only else ''}",
+        value=f"[{title}]({question_link}) ({difficulty}){f' [Solution]({solution_link})' if has_solution else ''}",
+        inline=False,
+    )
+
+    embed.add_field(name="Acceptance", value=f"{round(ac_rate, 2)}%", inline=True)
+    embed.add_field(name="👍 Like", value=likes, inline=True)
+    embed.add_field(name="👎 Dislike", value=dislikes, inline=True)
+
+    topic_field_value = ""
+    for i in range(len(topics_tags)):
+        value = f"[{topics_tags[i]['name']}](https://leetcode.com/tag/{topics_tags[i]['slug']})"
+        if len(topic_field_value) + len(value) > 1024:
+            break
+        topic_field_value += value
+        if i < len(topics_tags) - 1:
+            topic_field_value += ", "
+    embed.add_field(name="Related topics", value=topic_field_value, inline=False)
+
+    similar_questions_field_value = ""
+    for i in range(len(similar_questions)):
+        value = f"[{similar_questions[i]['title']}](https://leetcode.com/problems/{similar_questions[i]['titleSlug']}) ({similar_questions[i]['difficulty']})"
+        if len(similar_questions_field_value) + len(value) > 1024:
+            break
+        similar_questions_field_value += value
+        if i < len(similar_questions) - 1:
+            similar_questions_field_value += "\n"
+
+    if len(similar_questions) > 0:
+        embed.add_field(
+            name="Similar questions",
+            value=similar_questions_field_value,
+            inline=False,
+        )
+
     async with cog.db_session() as session:
-        channel_ids = await crud.get_active_daily_challenge_channel_ids(session)
-        for channel_id in channel_ids:
-            channel = cog.bot.get_channel(channel_id)
+        leetcode_configs = await crud.get_leetcode_configs_with_active_daily_challenge(
+            session
+        )
+        for config in leetcode_configs:
+            config.daily_challenge_date = today.replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            channel = cog.bot.get_channel(config.notification_channel_id)
             if not channel:
                 continue
-            await channel.send("Daily challenge started.")
+            await channel.send(embed=embed)
+            role = cog.bot.get_guild(config.guild_id).get_role(config.role_id)
+            message = f"The new daily challenge has released! {role.mention if role else f'@(Role with id {config.role_id} not found)'}"
+            await channel.send(message)
 
 
 async def _daily_challenge_remind(guild_id: int):
@@ -1496,202 +1717,69 @@ async def _daily_challenge_remind(guild_id: int):
                 detail=f"Remind job [remind-{guild_id}] failed due to missing or no permission to send messages in notification channel ({leetcode_config.notification_channel_id}) in guild ({guild_id}).",
             )
 
-        completed_user_ids = await crud.get_completed_user_ids(session, guild_id)
+        uncompleted_user_ids = await crud.get_uncompleted_user_ids(
+            session, guild_id, leetcode_config.daily_challenge_date
+        )
 
-        remind_content = "Today's leetcode daily coding challenge will be end soon."
+        remind_content = "Today's leetcode daily coding challenge will be end soon. You still have some time to complete it."
 
-        unfinished_content = ""
+        if uncompleted_user_ids:
+            remind_content += "\n"
 
-        for member in role.members:
-            if member.id not in completed_user_ids:
-                if unfinished_content:
-                    unfinished_content += f"{member.mention}"
-                else:
-                    unfinished_content = (
-                        f" You still have some time to complete it.\n{member.mention}"
-                    )
+            for user_id in uncompleted_user_ids:
+                member = guild.get_member(user_id)
+                remind_content += (
+                    f"{member.mention}"
+                    if member
+                    else f"@(Unknown user with id {user_id})"
+                )
 
-        await notification_channel.send(remind_content + unfinished_content)
+        await notification_channel.send(remind_content)
 
 
 async def _daily_challenge_end():
     cog = LeetcodeCog.get_instance()
     if not cog:
         raise Exception("LeetcodeCog instance not found.")
+
+    common_message = "Today's leetcode daily coding challenge has ended."
+
     async with cog.db_session() as session:
-        channel_ids = await crud.get_active_daily_challenge_channel_ids(session)
-        for channel_id in channel_ids:
-            channel = cog.bot.get_channel(channel_id)
+        leetcode_configs = await crud.get_leetcode_configs_with_active_daily_challenge(
+            session
+        )
+        for config in leetcode_configs:
+            channel = cog.bot.get_channel(config.notification_channel_id)
             if not channel:
                 continue
-            await channel.send("Daily challenge ended.")
 
+            completed_message = ""
+            uncompleted_message = ""
 
-def _get_question_graphql_query() -> str:
-    titleSlug = Variable(name="titleSlug", type="String!")
-    query = Query(
-        name="question",
-        arguments=[Argument(name="titleSlug", value=titleSlug)],
-        fields=[
-            Field(name="questionId"),
-            Field(name="questionFrontendId"),
-            Field(name="title"),
-            Field(name="titleSlug"),
-            Field(name="acRate"),
-            Field(name="difficulty"),
-            Field(name="freqBar"),
-            Field(name="likes"),
-            Field(name="dislikes"),
-            Field(name="content"),
-            Field(name="similarQuestions"),
-            Field(name="isFavor"),
-            Field(name="isPaidOnly"),
-            Field(name="status"),
-            Field(name="hasVideoSolution"),
-            Field(name="hasSolution"),
-            Field(
-                name="topicTags",
-                fields=[
-                    Field(name="name"),
-                    Field(name="id"),
-                    Field(name="slug"),
-                ],
-            ),
-        ],
-    )
-    operation = Operation(
-        type="query", name="questionData", variables=[titleSlug], queries=[query]
-    )
-    return operation.render()
+            completed_user_ids = await crud.get_completed_user_ids(
+                session, config.guild_id, config.daily_challenge_date
+            )
+            if completed_user_ids:
+                completed_message = (
+                    f"\nCompleted participants (total: {len(completed_user_ids)}):"
+                )
+                for index, user_id in enumerate(completed_user_ids):
+                    member = channel.guild.get_member(user_id)
+                    completed_message += f"\n{index + 1}. {member.display_name if member else f'Unknown user with id {user_id}'}"
 
+            uncompleted_user_ids = await crud.get_uncompleted_user_ids(
+                session, config.guild_id, config.daily_challenge_date
+            )
 
-def _get_daily_challenge_graphql_query() -> str:
-    question = Field(
-        name="question",
-        fields=[
-            Field(name="questionId"),
-            Field(name="questionFrontendId"),
-            Field(name="title"),
-            Field(name="titleSlug"),
-            Field(name="acRate"),
-            Field(name="difficulty"),
-            Field(name="freqBar"),
-            Field(name="likes"),
-            Field(name="dislikes"),
-            Field(name="content"),
-            Field(name="similarQuestions"),
-            Field(name="isFavor"),
-            Field(name="isPaidOnly"),
-            Field(name="status"),
-            Field(name="hasVideoSolution"),
-            Field(name="hasSolution"),
-            Field(
-                name="topicTags",
-                fields=[
-                    Field(name="name"),
-                    Field(name="id"),
-                    Field(name="slug"),
-                ],
-            ),
-        ],
-    )
-    query = Query(
-        name="activeDailyCodingChallengeQuestion",
-        fields=[
-            Field(name="date"),
-            Field(name="userStatus"),
-            Field(name="link"),
-            question,
-        ],
-    )
-    operation = Operation(type="query", name="questionOfToday", queries=[query])
-    return operation.render()
+            if uncompleted_user_ids:
+                uncompleted_message = (
+                    f"\nUncompleted participants (total: {len(uncompleted_user_ids)}):"
+                )
+                for index, user_id in enumerate(uncompleted_user_ids):
+                    member = channel.guild.get_member(user_id)
+                    uncompleted_message += f"\n{index + 1}. {member.display_name if member else f'Unknown user with id {user_id}'}"
 
-
-def _get_submission_graph_query() -> str:
-    submission_int_id = Variable(name="submissionIntId", type="Int!")
-    submission_id = Variable(name="submissionId", type="ID!")
-    user = Field(
-        name="user",
-        fields=[
-            Field(name="username"),
-            Field(
-                name="profile",
-                fields=[Field(name="realName"), Field(name="userAvatar")],
-            ),
-        ],
-    )
-    lang = Field(name="lang", fields=[Field(name="name"), Field(name="verboseName")])
-    question = Field(
-        name="question",
-        fields=[
-            Field(name="questionFrontendId"),
-            Field(name="title"),
-            Field(name="titleSlug"),
-            Field(name="difficulty"),
-            Field(name="isPaidOnly"),
-        ],
-    )
-    topic_tags = Field(
-        name="topicTags",
-        fields=[Field(name="tagId"), Field(name="slug"), Field(name="name")],
-    )
-    submission_query = Query(
-        name="submissionDetails",
-        arguments=[Argument(name="submissionId", value=submission_int_id)],
-        fields=[
-            Field(name="runtime"),
-            Field(name="runtimeDisplay"),
-            Field(name="runtimePercentile"),
-            Field(name="memory"),
-            Field(name="memoryDisplay"),
-            Field(name="memoryPercentile"),
-            Field(name="memoryDistribution"),
-            Field(name="code"),
-            Field(name="timestamp"),
-            Field(name="statusCode"),
-            user,
-            lang,
-            question,
-            Field(name="notes"),
-            topic_tags,
-            Field(name="runtimeError"),
-            Field(name="compileError"),
-            Field(name="lastTestcase"),
-        ],
-    )
-    complexity_query = Query(
-        name="submissionComplexity",
-        arguments=[Argument(name="submissionId", value=submission_id)],
-        fields=[
-            Field(
-                name="timeComplexity",
-                fields=[
-                    Field(name="complexity"),
-                    Field(name="displayName"),
-                    Field(name="funcStr"),
-                    Field(name="vote"),
-                ],
-            ),
-            Field(
-                name="memoryComplexity",
-                fields=[
-                    Field(name="complexity"),
-                    Field(name="displayName"),
-                    Field(name="funcStr"),
-                    Field(name="vote"),
-                ],
-            ),
-            Field(name="isLimited"),
-        ],
-    )
-    operation = Operation(
-        type="query",
-        name="submissionDetails",
-        variables=[submission_int_id, submission_id],
-        queries=[submission_query, complexity_query],
-    )
-    return operation.render()
+            await channel.send(common_message + completed_message + uncompleted_message)
 
 
 def _get_highlight_type(language: str) -> str:

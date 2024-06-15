@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from Fisher.db.models import TimestampMixin
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 __all__ = ["Base", "GuildConfig", "Member", "Question", "Submission"]
@@ -27,6 +26,13 @@ class GuildConfig(Base, TimestampMixin):
     )
     remind_time: Mapped[str] = mapped_column(String, nullable=False, default="23:00:00")
     guild_timezone: Mapped[str] = mapped_column(String, nullable=False, default="UTC")
+    daily_challenge_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ),
+    )
 
     members: Mapped[list[Member]] = relationship()
 
