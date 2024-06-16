@@ -12,15 +12,23 @@ async def get_leetcode_config(db: AsyncSession, guild_id: int) -> GuildConfig | 
     return res
 
 
-async def get_member(db: AsyncSession, guild_id: int, member_id: int) -> Member | None:
+async def get_member(db: AsyncSession, member_id: int) -> Member | None:
+    res = await db.execute(select(Member).where(Member.id == member_id))
+    res = res.scalar_one_or_none()
+    return res
+
+
+async def get_member_by_guild_user(
+    db: AsyncSession, guild_id: int, user_id: int
+) -> Member | None:
     res = await db.execute(
-        select(Member).where(Member.guild_id == guild_id, Member.user_id == member_id)
+        select(Member).where(Member.guild_id == guild_id, Member.user_id == user_id)
     )
     res = res.scalar_one_or_none()
     return res
 
 
-async def get_members(db: AsyncSession, guild_id: int) -> list[Member]:
+async def get_guild_members(db: AsyncSession, guild_id: int) -> list[Member]:
     res = await db.execute(select(Member).where(Member.guild_id == guild_id))
     res = res.scalars().all()
     return res
@@ -87,7 +95,9 @@ async def get_questions_with_id_number(
     return res
 
 
-async def get_members_score(db: AsyncSession, guild_id: int) -> list[tuple[int, int]]:
+async def get_guild_members_score(
+    db: AsyncSession, guild_id: int
+) -> list[tuple[int, int]]:
     res = await db.execute(
         select(Submission.user_id, func.count(Submission.submission_id).label("score"))
         .where(Submission.guild_id == guild_id)

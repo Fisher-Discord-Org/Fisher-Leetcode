@@ -698,7 +698,7 @@ class LeetcodeCog(
                     detail="Leetcode plugin is not initialized in this guild.",
                 )
 
-            member = await crud.get_member(
+            member = await crud.get_member_by_guild_user(
                 session, guild_id=interaction.guild_id, member_id=interaction.user.id
             )
             if member:
@@ -756,7 +756,7 @@ class LeetcodeCog(
                     detail="Leetcode plugin is not initialized in this guild.",
                 )
 
-            member = await crud.get_member(
+            member = await crud.get_member_by_guild_user(
                 session, guild_id=interaction.guild_id, member_id=interaction.user.id
             )
             if not member:
@@ -1271,7 +1271,7 @@ class LeetcodeCog(
                     detail="The daily challenge is not enabled in this guild.",
                 )
 
-            members = await crud.get_members(session, interaction.guild_id)
+            members = await crud.get_guild_members(session, interaction.guild_id)
             if not members:
                 message = "No members joined the daily challenge."
             else:
@@ -1319,7 +1319,9 @@ class LeetcodeCog(
                     detail="The daily challenge is not enabled in this guild.",
                 )
 
-            member_scores = await crud.get_members_score(session, interaction.guild_id)
+            member_scores = await crud.get_guild_members_score(
+                session, interaction.guild_id
+            )
             if not member_scores:
                 message = "Empty scoreboard."
             else:
@@ -1456,10 +1458,10 @@ class LeetcodeCog(
                     detail="The daily challenge is not enabled in this guild.",
                 )
 
-            member = await crud.get_member(
+            db_member = await crud.get_member_by_guild_user(
                 db_session, interaction.guild_id, interaction.user.id
             )
-            if not member:
+            if not db_member:
                 raise CommandArgumentError(
                     status_code=400,
                     detail="You have not joined the daily challenge. Please join the daily challenge using `/leetcode join` first.",
@@ -1573,7 +1575,15 @@ class LeetcodeCog(
             if db_submission := await crud.get_submission(
                 db_session, guild_id=interaction.guild_id, submission_id=submission_id
             ):
-                member = interaction.guild.get_member(db_submission.user_id)
+                submission_member = await crud.get_member(
+                    db_session, db_submission.member_id
+                )
+                if not submission_member:
+                    raise CommandArgumentError(
+                        status_code=404,
+                        detail=f"Submission {submission_id} has already been submitted by an unknown user with member id {db_submission.member_id}.",
+                    )
+                member = interaction.guild.get_member(submission_member.id)
                 raise CommandArgumentError(
                     status_code=400,
                     detail=f"Submission {submission_id} has already been submitted by {member.display_name if member else f'(Unknown user with id {db_submission.user_id})'}.",
@@ -1582,8 +1592,7 @@ class LeetcodeCog(
             db_session.add(
                 Submission(
                     submission_id=submission_id,
-                    guild_id=interaction.guild_id,
-                    user_id=interaction.user.id,
+                    member_id=db_member.id,
                     question_id=submission_details["question"]["questionFrontendId"],
                 )
             )
