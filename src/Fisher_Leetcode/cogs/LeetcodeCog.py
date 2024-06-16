@@ -1417,7 +1417,7 @@ class LeetcodeCog(
                         "name": {
                             Locale.british_english: "link_or_id",
                             Locale.american_english: "link_or_id",
-                            Locale.chinese: "链接或ID",
+                            Locale.chinese: "链接或id",
                         },
                         "description": {
                             Locale.british_english: "The submission link or submission id.",
