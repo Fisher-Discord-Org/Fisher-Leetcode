@@ -3,7 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from Fisher.db.models import TimestampMixin
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Integer,
+    String,
+)
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -63,13 +70,11 @@ class Submission(Base):
     submission_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     guild_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("leetcode_guild_configs.guild_id", ondelete="CASCADE"),
         primary_key=True,
         index=True,
     )
     user_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("leetcode_members.user_id", ondelete="CASCADE"),
         index=True,
     )
     question_id: Mapped[int] = mapped_column(
@@ -79,4 +84,10 @@ class Submission(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.now(timezone.utc)
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            [guild_id, user_id], [Member.guild_id, Member.user_id], ondelete="CASCADE"
+        ),
     )
