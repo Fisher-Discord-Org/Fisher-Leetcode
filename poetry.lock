@@ -223,8 +223,8 @@ sqlalchemy = "^2.0.30"
 [package.source]
 type = "git"
 url = "https://github.com/Fisher-Discord-Org/Fisher.git"
-reference = "Fisher"
-resolved_reference = "c69fad4f1144e1dfe4764b6fc1675f92298c5a51"
+reference = "dev"
+resolved_reference = "ea8c6137c86072322aef804e2ea5711963f5b78d"
 
 [[package]]
 name = "frozenlist"
@@ -996,4 +996,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "5386992697eb2ca09a1ec03efaecd8c1d3e3a98f739e87b73601c69718a2917c"
+content-hash = "16220aede30ab925a2b3164e7b21976213f28fcc32ef4bfb15b12643e719a9b7"
