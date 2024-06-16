@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from Fisher.db.models import TimestampMixin
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 __all__ = ["Base", "GuildConfig", "Member", "Question", "Submission"]
 
@@ -33,8 +33,6 @@ class GuildConfig(Base, TimestampMixin):
             hour=0, minute=0, second=0, microsecond=0
         ),
     )
-
-    members: Mapped[list[Member]] = relationship()
 
 
 class Member(Base):
