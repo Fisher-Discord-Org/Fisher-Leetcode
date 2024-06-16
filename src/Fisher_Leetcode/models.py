@@ -67,7 +67,7 @@ class Submission(Base):
 
     submission_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     member_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("leetcode_members.id", ondelete="CASCADE"), index=True
+        Integer, ForeignKey("leetcode_members.id", ondelete="CASCADE"), primary_key=True
     )
     question_id: Mapped[int] = mapped_column(
         Integer,

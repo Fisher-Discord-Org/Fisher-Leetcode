@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import String, cast, extract, func, select
+from sqlalchemy import String, cast, extract, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import GuildConfig, Member, Question, Submission
@@ -48,12 +48,14 @@ async def get_completed_user_ids(
     db: AsyncSession, guild_id: int, today: datetime = datetime.now(timezone.utc)
 ) -> list[int]:
     res = await db.execute(
-        select(Submission.user_id).where(
-            Submission.guild_id == guild_id,
+        select(Member.user_id)
+        .where(
+            Member.guild_id == guild_id,
             extract("year", Submission.created_at) == today.year,
             extract("month", Submission.created_at) == today.month,
             extract("day", Submission.created_at) == today.day,
         )
+        .join(Member, Submission.member_id == Member.id)
     )
     res = res.scalars().all()
     return res
@@ -69,9 +71,9 @@ async def get_uncompleted_user_ids(
             extract("year", Submission.created_at) == today.year,
             extract("month", Submission.created_at) == today.month,
             extract("day", Submission.created_at) == today.day,
-            Submission.user_id == None,
+            Submission.submission_id == None,
         )
-        .join(Submission, Member.user_id == Submission.user_id, isouter=True)
+        .join(Submission, Member.id == Submission.member_id, isouter=True)
     )
     res = res.scalars().all()
     return res
@@ -99,21 +101,22 @@ async def get_guild_members_score(
     db: AsyncSession, guild_id: int
 ) -> list[tuple[int, int]]:
     res = await db.execute(
-        select(Submission.user_id, func.count(Submission.submission_id).label("score"))
-        .where(Submission.guild_id == guild_id)
-        .group_by(Submission.user_id)
-        .order_by("score DESC")
+        select(Member.user_id, func.count(Submission.submission_id).label("score"))
+        .where(Member.guild_id == guild_id)
+        .join(Member, Submission.member_id == Member.id)
+        .group_by(Member.id)
+        .order_by(text("score DESC"))
     )
     res = res.scalars().all()
     return res
 
 
 async def get_submission(
-    db: AsyncSession, guild_id: int, submission_id: int
+    db: AsyncSession, member_id: int, submission_id: int
 ) -> Submission | None:
     res = await db.execute(
         select(Submission).where(
-            Submission.guild_id == guild_id, Submission.submission_id == submission_id
+            Submission.member_id == member_id, Submission.submission_id == submission_id
         )
     )
     res = res.scalar_one_or_none()
