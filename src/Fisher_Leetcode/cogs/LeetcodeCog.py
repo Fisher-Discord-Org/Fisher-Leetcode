@@ -1154,6 +1154,7 @@ class LeetcodeCog(
         submission_runtime_complexity = (
             submission_complexity["timeComplexity"]["complexity"]
             if submission_status == "Accepted"
+            and submission_complexity["timeComplexity"]
             else None
         )
         submission_memory_display = submission_details["memoryDisplay"]
@@ -1161,6 +1162,7 @@ class LeetcodeCog(
         submission_memory_complexity = (
             submission_complexity["memoryComplexity"]["complexity"]
             if submission_status == "Accepted"
+            and submission_complexity["memoryComplexity"]
             else None
         )
         submission_author = submission_details["user"]["username"]
@@ -1632,6 +1634,7 @@ class LeetcodeCog(
         submission_runtime_complexity = (
             submission_complexity["timeComplexity"]["complexity"]
             if submission_status == "Accepted"
+            and submission_complexity["timeComplexity"]
             else None
         )
         submission_memory_display = submission_details["memoryDisplay"]
@@ -1639,6 +1642,7 @@ class LeetcodeCog(
         submission_memory_complexity = (
             submission_complexity["memoryComplexity"]["complexity"]
             if submission_status == "Accepted"
+            and submission_complexity["memoryComplexity"]
             else None
         )
         submission_author = submission_details["user"]["username"]
