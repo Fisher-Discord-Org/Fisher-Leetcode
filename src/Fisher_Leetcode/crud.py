@@ -49,13 +49,14 @@ async def get_completed_user_ids(
 ) -> list[int]:
     res = await db.execute(
         select(Member.user_id)
+        .select_from(Submission)
+        .join(Member, Submission.member_id == Member.id)
         .where(
             Member.guild_id == guild_id,
             extract("year", Submission.created_at) == today.year,
             extract("month", Submission.created_at) == today.month,
             extract("day", Submission.created_at) == today.day,
         )
-        .join(Member, Submission.member_id == Member.id)
     )
     res = res.scalars().all()
     return res
@@ -64,16 +65,20 @@ async def get_completed_user_ids(
 async def get_uncompleted_user_ids(
     db: AsyncSession, guild_id: int, today: datetime = datetime.now(timezone.utc)
 ) -> list[int]:
-    res = await db.execute(
-        select(Member.user_id)
+    subquery = (
+        select(Submission.submission_id, Submission.member_id)
         .where(
-            Member.guild_id == guild_id,
             extract("year", Submission.created_at) == today.year,
             extract("month", Submission.created_at) == today.month,
             extract("day", Submission.created_at) == today.day,
-            Submission.submission_id == None,
         )
-        .join(Submission, Member.id == Submission.member_id, isouter=True)
+        .subquery()
+    )
+    res = await db.execute(
+        select(Member.user_id)
+        .select_from(Member)
+        .join(subquery, Member.id == subquery.c.member_id, isouter=True)
+        .where(Member.guild_id == guild_id, subquery.c.submission_id == None)
     )
     res = res.scalars().all()
     return res
@@ -108,8 +113,9 @@ async def get_guild_members_score(
 ) -> list[tuple[int, int]]:
     res = await db.execute(
         select(Member.user_id, func.count(Submission.submission_id).label("score"))
-        .where(Member.guild_id == guild_id)
+        .select_from(Submission)
         .join(Member, Submission.member_id == Member.id)
+        .where(Member.guild_id == guild_id)
         .group_by(Member.id)
         .order_by(text("score DESC"))
     )
