@@ -1573,7 +1573,7 @@ class LeetcodeCog(
                 )
 
             if db_submission := await crud.get_submission(
-                db_session, guild_id=interaction.guild_id, submission_id=submission_id
+                db_session, member_id=db_member.id, submission_id=submission_id
             ):
                 submission_member = await crud.get_member(
                     db_session, db_submission.member_id
