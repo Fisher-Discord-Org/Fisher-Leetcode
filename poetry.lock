@@ -224,7 +224,7 @@ sqlalchemy = "^2.0.30"
 type = "git"
 url = "https://github.com/Fisher-Discord-Org/Fisher.git"
 reference = "Fisher"
-resolved_reference = "7b53617a26377da94f886923b707211706a119d4"
+resolved_reference = "c69fad4f1144e1dfe4764b6fc1675f92298c5a51"
 
 [[package]]
 name = "frozenlist"
