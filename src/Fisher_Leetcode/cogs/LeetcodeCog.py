@@ -110,6 +110,7 @@ class LeetcodeCog(
         self.scheduler.shutdown()
         for session in self.http_sessions.values():
             await session.close()
+        self.http_sessions.clear()
         await self._http_connector.close()
 
     leetcode_group = Group(
