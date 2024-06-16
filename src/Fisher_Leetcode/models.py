@@ -48,7 +48,6 @@ class Member(Base):
     guild_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("leetcode_guild_configs.guild_id", ondelete="CASCADE"),
-        primary_key=True,
         index=True,
     )
 
