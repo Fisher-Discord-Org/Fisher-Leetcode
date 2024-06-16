@@ -7,7 +7,6 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
-    ForeignKeyConstraint,
     Integer,
     String,
 )
@@ -44,8 +43,8 @@ class GuildConfig(Base, TimestampMixin):
 
 class Member(Base):
     __tablename__ = "leetcode_members"
-
-    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
     guild_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("leetcode_guild_configs.guild_id", ondelete="CASCADE"),
@@ -68,14 +67,8 @@ class Submission(Base):
     __tablename__ = "leetcode_submissions"
 
     submission_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    guild_id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-        index=True,
-    )
-    user_id: Mapped[int] = mapped_column(
-        Integer,
-        index=True,
+    member_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("leetcode_members.id", ondelete="CASCADE"), index=True
     )
     question_id: Mapped[int] = mapped_column(
         Integer,
@@ -84,10 +77,4 @@ class Submission(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.now(timezone.utc)
-    )
-
-    __table_args__ = (
-        ForeignKeyConstraint(
-            [guild_id, user_id], [Member.guild_id, Member.user_id], ondelete="CASCADE"
-        ),
     )
