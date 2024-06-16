@@ -1683,7 +1683,7 @@ class LeetcodeCog(
 
         embed.set_footer(text=f"{submission_id} | {submission_datetime}")
 
-        await notification_channel.send(embed)
+        await notification_channel.send(embed=embed)
 
     async def _create_role(
         self,
