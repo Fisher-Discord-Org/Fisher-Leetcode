@@ -699,7 +699,7 @@ class LeetcodeCog(
                 )
 
             member = await crud.get_member_by_guild_user(
-                session, guild_id=interaction.guild_id, member_id=interaction.user.id
+                session, guild_id=interaction.guild_id, user_id=interaction.user.id
             )
             if member:
                 raise CommandArgumentError(
@@ -757,7 +757,7 @@ class LeetcodeCog(
                 )
 
             member = await crud.get_member_by_guild_user(
-                session, guild_id=interaction.guild_id, member_id=interaction.user.id
+                session, guild_id=interaction.guild_id, user_id=interaction.user.id
             )
             if not member:
                 raise CommandArgumentError(
@@ -1459,7 +1459,7 @@ class LeetcodeCog(
                 )
 
             db_member = await crud.get_member_by_guild_user(
-                db_session, interaction.guild_id, interaction.user.id
+                db_session, guild_id=interaction.guild_id, user_id=interaction.user.id
             )
             if not db_member:
                 raise CommandArgumentError(
