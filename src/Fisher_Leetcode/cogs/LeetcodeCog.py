@@ -1,6 +1,7 @@
 from base64 import urlsafe_b64decode
 from datetime import datetime, time, timezone
 from json import loads as json_loads
+from re import search as re_search
 
 from aiohttp import ClientSession, TCPConnector
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -1178,7 +1179,7 @@ class LeetcodeCog(
             Colour.green() if submission_status == "Accepted" else Colour.red()
         )
         embed.set_author(name=submission_author, icon_url=submission_author_icon)
-        embed.title = f"✍️ Leetcode Daily Coding Challenge Submission"
+        embed.title = f"✍️ Submission {submission_id}"
         embed.url = f"https://leetcode.com/submissions/detail/{submission_id}"
 
         embed.add_field(
@@ -1395,6 +1396,294 @@ class LeetcodeCog(
         await interaction.followup.send(
             common_message + completed_message + uncompleted_message, ephemeral=True
         )
+
+    @leetcode_group.command(
+        name="submit",
+        description="Submit the leetcode daily challenge solution with the given submission link or submission id",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "submit",
+                    Locale.american_english: "submit",
+                    Locale.chinese: "提交",
+                },
+                "description": {
+                    Locale.british_english: "Submit the leetcode daily challenge solution with the given submission link or submission id",
+                    Locale.american_english: "Submit the leetcode daily challenge solution with the given submission link or submission id",
+                    Locale.chinese: "通过输入提交链接或提交ID来打卡力扣每日挑战.",
+                },
+                "parameters": {
+                    "link_or_id": {
+                        "name": {
+                            Locale.british_english: "link_or_id",
+                            Locale.american_english: "link_or_id",
+                            Locale.chinese: "链接或ID",
+                        },
+                        "description": {
+                            Locale.british_english: "The submission link or submission id.",
+                            Locale.american_english: "The submission link or submission id.",
+                            Locale.chinese: "力扣提交链接或ID。",
+                        },
+                    },
+                },
+            }
+        },
+    )
+    @app_commands.describe(link_or_id="The submission link or submission id.")
+    async def leetcode_submit(self, interaction: Interaction, link_or_id: str):
+        await interaction.response.defer(ephemeral=True)
+        match = re_search(r"(\d+)", link_or_id)
+        if not match:
+            raise CommandArgumentError(
+                status_code=400,
+                detail="Cannot find submission id in the input. Please check the input and try again.",
+            )
+        submission_id = int(match.group())
+
+        async with self.db_session() as db_session:
+            leetcode_config = await crud.get_leetcode_config(
+                db_session, interaction.guild_id
+            )
+            if not leetcode_config:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail="Leetcode plugin is not initialized in this guild.",
+                )
+
+            if not leetcode_config.daily_challenge_on:
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail="The daily challenge is not enabled in this guild.",
+                )
+
+            member = await crud.get_member(
+                db_session, interaction.guild_id, interaction.user.id
+            )
+            if not member:
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail="You have not joined the daily challenge. Please join the daily challenge using `/leetcode join` first.",
+                )
+
+            notification_channel = interaction.guild.get_channel(
+                leetcode_config.notification_channel_id
+            )
+            if not notification_channel:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail=f"Notification channel with id {leetcode_config.notification_channel_id} not found. Please contact the administrator to reconfigure the notification channel.",
+                )
+
+            if not notification_channel.permissions_for(
+                interaction.guild.me
+            ).send_messages:
+                raise CommandArgumentError(
+                    status_code=403,
+                    detail=f"The bot does not have permission to send messages in the notification channel {notification_channel.mention}. Please contact the administrator to grant the permission.",
+                )
+
+            guild_timezone = (
+                leetcode_config.guild_timezone if leetcode_config else "UTC"
+            )
+
+            http_session = await self._get_http_session(interaction.guild_id)
+
+            async with http_session.post(
+                "https://leetcode.com/graphql",
+                json={
+                    "operationName": "questionOfToday",
+                    "query": graphql.get_daily_challenge_graphql_query(),
+                    "variables": {},
+                },
+            ) as response:
+                if not response.ok:
+                    raise CommandArgumentError(
+                        status_code=400,
+                        detail=f"Failed to get information about today's daily challenge question: {response.status} {response.reason}",
+                    )
+                data = await response.json()
+                question_of_today = data["data"]["activeDailyCodingChallengeQuestion"]
+
+                if not question_of_today:
+                    raise CommandArgumentError(
+                        status_code=404,
+                        detail="Today's daily challenge question not found.",
+                    )
+
+            async with http_session.post(
+                "https://leetcode.com/graphql",
+                json={
+                    "operatioName": "submissionDetails",
+                    "query": graphql.get_submission_graphql_query(),
+                    "variables": {
+                        "submissionIntId": submission_id,
+                        "submissionId": str(submission_id),
+                    },
+                },
+            ) as response:
+                if not response.ok:
+                    raise CommandArgumentError(
+                        status_code=400,
+                        detail=f"Failed to get submission details: {response.status} {response.reason}",
+                    )
+                data = await response.json()
+                submission_details = data["data"]["submissionDetails"]
+                submission_complexity = data["data"]["submissionComplexity"]
+
+                if not submission_details:
+                    raise CommandArgumentError(
+                        status_code=404,
+                        detail=f"Submission `{submission_id}` not found or not accessible. Please check the input submission id and cookie status and try again.",
+                    )
+
+            if (
+                submission_details["question"]["questionFrontendId"]
+                != question_of_today["question"]["questionFrontendId"]
+            ):
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail=f"The submission (submission_id: {submission_id}, question_id: {submission_details['question']['questionFrontendId']}) does not match today's daily challenge question (question_id: {question_of_today['question']['questionFrontendId']}). Please submit the correct submission.",
+                )
+
+            today_date = question_of_today["date"].split("-")
+            today_date = datetime(
+                year=int(today_date[0]),
+                month=int(today_date[1]),
+                day=int(today_date[2]),
+                tzinfo=timezone.utc,
+            )
+
+            if (
+                datetime.fromtimestamp(
+                    submission_details["timestamp"], timezone.utc
+                ).replace(hour=0, minute=0, second=0, microsecond=0)
+                != today_date
+            ):
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail=f"The submission (submission_id: {submission_id}, question_id: {submission_details['question']['questionFrontendId']}) is not submitted on today's daily challenge. Please submit a submission for today's daily challenge.",
+                )
+
+            if submission_details["statusCode"] != 10:
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail=f"Submission {submission_id} has a status of `{_get_status_display(submission_details['statusCode'])}`. Please submit an accepted solution.",
+                )
+
+            if db_submission := await crud.get_submission(
+                db_session, guild_id=interaction.guild_id, submission_id=submission_id
+            ):
+                member = interaction.guild.get_member(db_submission.user_id)
+                raise CommandArgumentError(
+                    status_code=400,
+                    detail=f"Submission {submission_id} has already been submitted by {member.display_name if member else f'(Unknown user with id {db_submission.user_id})'}.",
+                )
+
+            db_session.add(
+                Submission(
+                    submission_id=submission_id,
+                    guild_id=interaction.guild_id,
+                    user_id=interaction.user.id,
+                    question_id=submission_details["question"]["questionFrontendId"],
+                )
+            )
+            await db_session.commit()
+
+        await interaction.followup.send(
+            f"Submission {submission_id} has been received. Nice job! 🎉",
+            ephemeral=True,
+        )
+
+        question_id = submission_details["question"]["questionFrontendId"]
+        question_title = submission_details["question"]["title"]
+        question_link = f"https://leetcode.com/problems/{submission_details['question']['titleSlug']}"
+        question_difficulty = submission_details["question"]["difficulty"]
+        question_is_paid_only = submission_details["question"]["isPaidOnly"]
+        submission_status = _get_status_display(submission_details["statusCode"])
+        submission_runtime_display = submission_details["runtimeDisplay"]
+        submission_runtime_percentile = submission_details["runtimePercentile"]
+        submission_runtime_complexity = (
+            submission_complexity["timeComplexity"]["complexity"]
+            if submission_status == "Accepted"
+            else None
+        )
+        submission_memory_display = submission_details["memoryDisplay"]
+        submission_memory_percentile = submission_details["memoryPercentile"]
+        submission_memory_complexity = (
+            submission_complexity["memoryComplexity"]["complexity"]
+            if submission_status == "Accepted"
+            else None
+        )
+        submission_author = submission_details["user"]["username"]
+        submission_author_icon = submission_details["user"]["profile"]["userAvatar"]
+        submission_language = submission_details["lang"]["verboseName"]
+        submission_datetime = (
+            datetime.fromtimestamp(submission_details["timestamp"], timezone.utc)
+            .astimezone(pytz_timezone(guild_timezone))
+            .strftime("%Y-%m-%d %H:%M:%S %Z")
+        )
+        submission_code = submission_details["code"]
+        submission_notes = submission_details["notes"]
+        submission_topic_tags = submission_details["topicTags"]
+
+        embed = Embed()
+        embed.color = (
+            Colour.green() if submission_status == "Accepted" else Colour.red()
+        )
+        embed.set_author(name=submission_author, icon_url=submission_author_icon)
+        embed.title = f"✍️ Leetcode Daily Coding Challenge Submission"
+        embed.url = f"https://leetcode.com/submissions/detail/{submission_id}"
+
+        embed.add_field(
+            name=f"Problem {question_id}{f' 💰' if question_is_paid_only else ''}",
+            value=f"[{question_title}]({question_link}) ({question_difficulty})",
+            inline=False,
+        )
+
+        embed.add_field(name="Status", value=submission_status, inline=False)
+
+        embed.add_field(
+            name="Runtime",
+            value=f"{submission_runtime_display}{f' (Beats: {submission_runtime_percentile:.2f}%)' if submission_runtime_percentile else ''}{f'\n{submission_runtime_complexity}' if submission_runtime_complexity else ''}",
+            inline=True,
+        )
+        embed.add_field(
+            name="Memory",
+            value=f"{submission_memory_display}{f' (Beats: {submission_memory_percentile:.2f}%)' if submission_memory_percentile else ''}{f'\n{submission_memory_complexity}' if submission_memory_complexity else ''}",
+            inline=True,
+        )
+
+        highlight_type = _get_highlight_type(submission_language)
+
+        code_value = _generate_embed_text_value(
+            f"{highlight_type}\n{submission_code}", render_type="markdown"
+        )
+        embed.add_field(
+            name=f"Submission code ({submission_language})",
+            value=code_value,
+            inline=False,
+        )
+
+        if submission_notes:
+            notes_value = _generate_embed_text_value(
+                submission_notes, render_type="markdown"
+            )
+            embed.add_field(name="Notes", value=notes_value, inline=False)
+
+        if submission_topic_tags:
+            topic_field_value = ""
+            for i in range(len(submission_topic_tags)):
+                value = f"[{submission_topic_tags[i]['name']}](https://leetcode.com/tag/{submission_topic_tags[i]['slug']})"
+                if len(topic_field_value) + len(value) > 1024:
+                    break
+                topic_field_value += value
+                if i < len(submission_topic_tags) - 1:
+                    topic_field_value += ", "
+            embed.add_field(name="Related tags", value=topic_field_value, inline=False)
+
+        embed.set_footer(text=f"{submission_id} | {submission_datetime}")
+
+        await notification_channel.send(embed)
 
     async def _create_role(
         self,
@@ -1635,7 +1924,11 @@ async def _daily_challenge_start():
 
     async with session.post(
         "https://leetcode.com/graphql",
-        json={"query": graphql.get_daily_challenge_graphql_query()},
+        json={
+            "operationName": "questionOfToday",
+            "query": graphql.get_daily_challenge_graphql_query(),
+            "variables": {},
+        },
     ) as response:
         if not response.ok:
             raise Exception(

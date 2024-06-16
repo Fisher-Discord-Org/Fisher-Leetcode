@@ -67,17 +67,15 @@ class Submission(Base):
         primary_key=True,
         index=True,
     )
-    question_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("leetcode_questions.id", ondelete="CASCADE"),
-        primary_key=True,
-        index=True,
-    )
     user_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("leetcode_members.user_id", ondelete="CASCADE"),
         index=True,
-        nullable=False,
+    )
+    question_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("leetcode_questions.id", ondelete="CASCADE"),
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.now(timezone.utc)

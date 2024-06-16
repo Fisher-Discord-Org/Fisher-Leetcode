@@ -96,3 +96,15 @@ async def get_members_score(db: AsyncSession, guild_id: int) -> list[tuple[int, 
     )
     res = res.scalars().all()
     return res
+
+
+async def get_submission(
+    db: AsyncSession, guild_id: int, submission_id: int
+) -> Submission | None:
+    res = await db.execute(
+        select(Submission).where(
+            Submission.guild_id == guild_id, Submission.submission_id == submission_id
+        )
+    )
+    res = res.scalar_one_or_none()
+    return res
