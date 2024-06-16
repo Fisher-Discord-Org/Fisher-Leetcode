@@ -231,11 +231,9 @@ class LeetcodeCog(
             if leetcode_config is not None:
                 raise CommandArgumentError(
                     status_code=400,
-                    detail="""
-                    Leetcode plugin already initialized in this guild.
-                    If you want to reinitialize, please delete the existing configuration with `/leetcode clean` first.
-                    If you want to update the configuration, please use other config commands to update the configuration.
-                    """,
+                    detail="Leetcode plugin already initialized in this guild.\n"
+                    "If you want to reinitialize, please delete the existing configuration with `/leetcode clean` first.\n"
+                    "If you want to update the configuration, please use other config commands to update the configuration.",
                 )
 
             guild_id = interaction.guild_id
@@ -719,12 +717,10 @@ class LeetcodeCog(
             await session.commit()
 
         await interaction.followup.send(
-            """
-            Successfully joined the leetcode daily challenge.
-            Use `/leetcode info` to check the daily challenge information.
-            Use `/leetcode today` to get today's challenge.
-            Use `/leetcode quit` to quit the daily challenge.
-            """,
+            "Successfully joined the leetcode daily challenge.\n"
+            "Use `/leetcode info` to check the daily challenge information.\n"
+            "Use `/leetcode today` to get today's challenge.\n"
+            "Use `/leetcode quit` to quit the daily challenge.",
             ephemeral=True,
         )
 
