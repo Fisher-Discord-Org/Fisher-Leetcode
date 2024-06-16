@@ -1594,7 +1594,9 @@ class LeetcodeCog(
                 Submission(
                     submission_id=submission_id,
                     member_id=db_member.id,
-                    question_id=submission_details["question"]["questionFrontendId"],
+                    question_id=int(
+                        submission_details["question"]["questionFrontendId"]
+                    ),
                 )
             )
             await db_session.commit()
