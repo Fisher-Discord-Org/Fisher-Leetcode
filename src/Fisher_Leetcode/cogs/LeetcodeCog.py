@@ -1590,13 +1590,28 @@ class LeetcodeCog(
                     detail=f"Submission {submission_id} has already been submitted by {member.display_name if member else f'(Unknown user with id {db_submission.user_id})'}.",
                 )
 
+            db_question = await crud.get_question_by_id(
+                db_session,
+                question_id=int(submission_details["question"]["questionFrontendId"]),
+            )
+
+            if not db_question:
+                db_question = Question(
+                    id=int(submission_details["question"]["questionFrontendId"]),
+                    title=submission_details["question"]["title"],
+                    title_slug=submission_details["question"]["titleSlug"],
+                    difficulty=_difficulty_display_to_int(
+                        submission_details["question"]["difficulty"]
+                    ),
+                    paid_only=submission_details["question"]["isPaidOnly"],
+                )
+                db_session.add(db_question)
+
             db_session.add(
                 Submission(
                     submission_id=submission_id,
                     member_id=db_member.id,
-                    question_id=int(
-                        submission_details["question"]["questionFrontendId"]
-                    ),
+                    question_id=db_question.id,
                 )
             )
             await db_session.commit()
@@ -1814,6 +1829,14 @@ class LeetcodeCog(
                 else f"Channel not found (previous channel id: {config.notification_channel_id})",
                 inline=False,
             )
+
+            question_repo_count = await crud.get_question_count(session)
+            embed.add_field(
+                name="Total cached questions",
+                value=question_repo_count,
+                inline=False,
+            )
+
             embed.add_field(
                 name="Daily challenge status",
                 value="On" if config.daily_challenge_on else "Off",
@@ -2165,6 +2188,16 @@ def _get_highlight_type(language: str) -> str:
         "scala": "scala",
     }
     return support_highlight.get(language.lower(), language.lower())
+
+
+def _difficulty_display_to_int(difficulty_display: str) -> int:
+    if difficulty_display == "Easy":
+        return 1
+    if difficulty_display == "Medium":
+        return 2
+    if difficulty_display == "Hard":
+        return 3
+    raise ValueError(f"Invalid difficulty display: {difficulty_display}")
 
 
 def _generate_embed_text_value(text: str, render_type: str = "plain_text"):

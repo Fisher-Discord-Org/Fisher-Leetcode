@@ -79,6 +79,12 @@ async def get_uncompleted_user_ids(
     return res
 
 
+async def get_question_count(db: AsyncSession) -> int:
+    res = await db.execute(select(func.count(Question.id)))
+    res = res.scalar()
+    return res
+
+
 async def get_question_by_id(db: AsyncSession, question_id: int) -> Question | None:
     res = await db.execute(select(Question).where(Question.id == question_id))
     res = res.scalar_one_or_none()
