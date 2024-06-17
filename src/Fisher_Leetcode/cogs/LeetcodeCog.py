@@ -81,28 +81,45 @@ class LeetcodeCog(
         self.scheduler.configure(jobstores=jobstores, job_defaults=job_defaults)
         self.scheduler.start()
 
-        if self.scheduler.get_job("daily-challenge-start") is None:
+        start_job = self.scheduler.get_job("daily-challenge-start")
+        start_job_trigger = CronTrigger(
+            hour=self.START_TIME.hour,
+            minute=self.START_TIME.minute,
+            second=self.START_TIME.second,
+            timezone=timezone.utc,
+        )
+        if not start_job:
+            logger.info("Start job not found. Adding new start job.")
             self.scheduler.add_job(
                 _daily_challenge_start,
-                CronTrigger(
-                    hour=self.START_TIME.hour,
-                    minute=self.START_TIME.minute,
-                    second=self.START_TIME.second,
-                    timezone=timezone.utc,
-                ),
+                start_job_trigger,
                 id="daily-challenge-start",
             )
+        elif start_job.trigger.fields != start_job_trigger.fields:
+            logger.info("Start job trigger changed. Rescheduling.")
+            self.scheduler.reschedule_job(
+                "daily-challenge-start", trigger=start_job_trigger
+            )
 
-        if self.scheduler.get_job("daily-challenge-end") is None:
+        end_job = self.scheduler.get_job("daily-challenge-end")
+        end_job_trigger = CronTrigger(
+            hour=self.END_TIME.hour,
+            minute=self.END_TIME.minute,
+            second=self.END_TIME.second,
+            timezone=timezone.utc,
+        )
+
+        if end_job is None:
+            logger.info("End job not found. Adding new end job.")
             self.scheduler.add_job(
                 _daily_challenge_end,
-                CronTrigger(
-                    hour=self.END_TIME.hour,
-                    minute=self.END_TIME.minute,
-                    second=self.END_TIME.second,
-                    timezone=timezone.utc,
-                ),
+                end_job_trigger,
                 id="daily-challenge-end",
+            )
+        elif end_job.trigger.fields != end_job_trigger.fields:
+            logger.info("End job trigger changed. Rescheduling.")
+            self.scheduler.reschedule_job(
+                "daily-challenge-end", trigger=end_job_trigger
             )
 
     async def cog_unload(self) -> None:
@@ -224,6 +241,12 @@ class LeetcodeCog(
             raise CommandArgumentError(
                 status_code=400,
                 detail=f"Unknown timezone `{guild_timezone}`. Please choose a supported timezone.",
+            )
+
+        if not interaction.channel.permissions_for(interaction.guild.me).send_messages:
+            raise CommandArgumentError(
+                status_code=403,
+                detail="The bot requires permission to send messages in the current channel. Please check the permission settings and try again.",
             )
 
         async with self.db_session() as session:
