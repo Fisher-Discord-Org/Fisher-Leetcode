@@ -2111,7 +2111,7 @@ async def _daily_challenge_remind(guild_id: int):
 
         if (
             not notification_channel
-            or notification_channel.permissions_for(
+            or not notification_channel.permissions_for(
                 notification_channel.guild.me
             ).send_messages
         ):
