@@ -45,8 +45,9 @@ async def get_leetcode_configs_with_active_daily_challenge(
 
 
 async def get_completed_user_ids(
-    db: AsyncSession, guild_id: int, today: datetime = datetime.now(timezone.utc)
+    db: AsyncSession, guild_id: int, today: datetime | None = None
 ) -> list[int]:
+    today = today or datetime.now(timezone.utc)
     res = await db.execute(
         select(Member.user_id)
         .select_from(Submission)
@@ -63,8 +64,9 @@ async def get_completed_user_ids(
 
 
 async def get_uncompleted_user_ids(
-    db: AsyncSession, guild_id: int, today: datetime = datetime.now(timezone.utc)
+    db: AsyncSession, guild_id: int, today: datetime | None = None
 ) -> list[int]:
+    today = today or datetime.now(timezone.utc)
     subquery = (
         select(Submission.submission_id, Submission.member_id)
         .where(

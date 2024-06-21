@@ -35,7 +35,7 @@ class GuildConfig(Base, TimestampMixin):
     daily_challenge_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=datetime.now(timezone.utc).replace(
+        default=lambda: datetime.now(timezone.utc).replace(
             hour=0, minute=0, second=0, microsecond=0
         ),
     )
@@ -75,5 +75,7 @@ class Submission(Base):
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.now(timezone.utc)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
