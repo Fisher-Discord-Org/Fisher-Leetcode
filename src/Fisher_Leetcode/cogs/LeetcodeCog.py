@@ -2060,6 +2060,7 @@ async def _daily_challenge_start():
             config.daily_challenge_date = today.replace(
                 hour=0, minute=0, second=0, microsecond=0
             )
+            await session.commit()
             channel = cog.bot.get_channel(config.notification_channel_id)
             if not channel:
                 continue
@@ -2080,13 +2081,17 @@ async def _daily_challenge_remind(guild_id: int):
         leetcode_config = await crud.get_leetcode_config(session, guild_id=guild_id)
         if not leetcode_config:
             cog._remove_remind_job(guild_id)
-            raise Exception(f"Leetcode module is either not initialized or not found for guild ({guild_id}) but remind job is still running.")
+            raise Exception(
+                f"Leetcode module is either not initialized or not found for guild ({guild_id}) but remind job is still running."
+            )
 
         if not guild:
             cog._remove_remind_job(guild_id)
             await session.delete(leetcode_config)
             await session.commit()
-            raise Exception(f"Guild ({guild_id}) has removed the bot but remind job is still running.")
+            raise Exception(
+                f"Guild ({guild_id}) has removed the bot but remind job is still running."
+            )
 
         role = guild.get_role(leetcode_config.role_id)
 
@@ -2094,7 +2099,9 @@ async def _daily_challenge_remind(guild_id: int):
             cog._remove_remind_job(guild_id)
             leetcode_config.daily_challenge_on = False
             await session.commit()
-            raise Exception(f"Remind job [remind-{guild_id}] failed due to missing role ({leetcode_config.role_id}) in guild ({guild_id}).")
+            raise Exception(
+                f"Remind job [remind-{guild_id}] failed due to missing role ({leetcode_config.role_id}) in guild ({guild_id})."
+            )
 
         notification_channel = cog.bot.get_channel(
             leetcode_config.notification_channel_id
@@ -2109,7 +2116,9 @@ async def _daily_challenge_remind(guild_id: int):
             cog._remove_remind_job(guild_id)
             leetcode_config.daily_challenge_on = False
             await session.commit()
-            raise Exception(f"Remind job [remind-{guild_id}] failed due to missing or no permission to send messages in notification channel ({leetcode_config.notification_channel_id}) in guild ({guild_id}).")
+            raise Exception(
+                f"Remind job [remind-{guild_id}] failed due to missing or no permission to send messages in notification channel ({leetcode_config.notification_channel_id}) in guild ({guild_id})."
+            )
 
         uncompleted_user_ids = await crud.get_uncompleted_user_ids(
             session, guild_id, leetcode_config.daily_challenge_date
