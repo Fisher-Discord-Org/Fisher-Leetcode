@@ -121,7 +121,7 @@ async def get_guild_members_score(
         .group_by(Member.id)
         .order_by(text("score DESC"))
     )
-    res = res.scalars().all()
+    res = res.all()
     return res
 
 
