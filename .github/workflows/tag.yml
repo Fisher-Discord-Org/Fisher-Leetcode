@@ -1,0 +1,36 @@
+name: tag
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  tag:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Tag
+        uses: SebRollen/toml-action@v1.2.0
+        id: read_toml
+        with:
+          file: "pyproject.toml"
+          field: "tool.poetry.version"
+      - name: Show branch
+        run: echo "Current branch ${{ github.ref_name }}"
+      - name: Show version
+        run: echo "Current version ${{ steps.read_toml.outputs.value }}"
+      - name: Create tag
+        id: create_tag
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{secrets.GITHUB_TOKEN}}
+          release_branches: main
+          default_bump: false
+          custom_tag: ${{ steps.read_toml.outputs.value }}
+          tag_prefix: "v"
