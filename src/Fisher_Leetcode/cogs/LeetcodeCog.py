@@ -644,8 +644,8 @@ class LeetcodeCog(
             leetcode_config.cookie = cookie
             await session.commit()
 
-            session = await self._get_http_session(interaction.guild_id)
-            session.cookie_jar.update_cookies(
+            http_session = await self._get_http_session(interaction.guild_id)
+            http_session.cookie_jar.update_cookies(
                 {"LEETCODE_SESSION": cookie}, URL("https://leetcode.com")
             )
 
