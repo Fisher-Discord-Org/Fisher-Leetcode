@@ -595,6 +595,74 @@ class LeetcodeCog(
         )
 
     @leetcode_group.command(
+        name="cookie",
+        description="Update the cookie for the leetcode plugin in the current guild.",
+        extras={
+            "locale": {
+                "name": {
+                    Locale.british_english: "cookie",
+                    Locale.american_english: "cookie",
+                    Locale.chinese: "cookie",
+                },
+                "description": {
+                    Locale.british_english: "Update the cookie for the leetcode plugin in the current guild.",
+                    Locale.american_english: "Update the cookie for the leetcode plugin in the current guild.",
+                    Locale.chinese: "更新当前服务器的leetcode插件的Cookie。",
+                },
+                "parameters": {
+                    "cookie": {
+                        "name": {
+                            Locale.british_english: "cookie",
+                            Locale.american_english: "cookie",
+                            Locale.chinese: "cookie",
+                        },
+                        "description": {
+                            Locale.british_english: "The cookie for leetcode.com.",
+                            Locale.american_english: "The cookie for leetcode.com.",
+                            Locale.chinese: "力扣官网的Cookie。",
+                        },
+                    }
+                },
+            }
+        },
+    )
+    @app_commands.describe(cookie="The cookie for leetcode.com.")
+    @is_guild_admin()
+    async def leetcode_cookie(self, interaction: Interaction, cookie: str):
+        await interaction.response.defer(ephemeral=True)
+
+        async with self.db_session() as session:
+            leetcode_config = await crud.get_leetcode_config(
+                session, guild_id=interaction.guild_id
+            )
+            if not leetcode_config:
+                raise CommandArgumentError(
+                    status_code=404,
+                    detail="Leetcode plugin is not initialized in this guild.",
+                )
+
+            leetcode_config.cookie = cookie
+            await session.commit()
+
+            session = await self._get_http_session(interaction.guild_id)
+            session.cookie_jar.update_cookies(
+                {"LEETCODE_SESSION": cookie}, URL("https://leetcode.com")
+            )
+
+            cookie_status = await self._get_cookie_status(guild_id=interaction.guild_id)
+            message = "Cookie updated.\n"
+            if not cookie_status:
+                message += "Cookie status: Invalid"
+            else:
+                new_cookie, cookie_expires = cookie_status
+                if new_cookie:
+                    leetcode_config.cookie = new_cookie
+                    await session.commit()
+                message += f"Cookie status: Valid (Expires: {cookie_expires.strftime('%Y-%m-%d %H:%M:%S %Z')})"
+
+        await interaction.followup.send(message, ephemeral=True)
+
+    @leetcode_group.command(
         name="remind_time",
         description="Set the remind time (in UTC) for the daily challenge in the current guild",
         extras={
